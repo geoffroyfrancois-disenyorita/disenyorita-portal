@@ -22,6 +22,12 @@ class TaskStatus(str, Enum):
     DONE = "done"
 
 
+class ProjectTemplateType(str, Enum):
+    WEBSITE = "website"
+    BRANDING = "branding"
+    CONSULTING = "consulting"
+
+
 class Task(IdentifiedModel):
     name: str
     status: TaskStatus = TaskStatus.TODO
@@ -30,6 +36,7 @@ class Task(IdentifiedModel):
     billable: bool = True
     estimated_hours: Optional[float] = None
     logged_hours: float = 0
+    dependencies: List[str] = Field(default_factory=list)
 
 
 class Milestone(IdentifiedModel):

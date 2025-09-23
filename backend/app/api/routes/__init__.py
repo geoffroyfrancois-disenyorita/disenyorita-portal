@@ -1,4 +1,15 @@
-from . import auth, clients, dashboard, financials, hr, marketing, monitoring, projects, support  # noqa: F401
+from . import (
+    auth,
+    clients,
+    dashboard,
+    financials,
+    hr,
+    marketing,
+    monitoring,
+    project_templates,
+    projects,
+    support,
+)  # noqa: F401
 
 __all__ = [
     "auth",
@@ -8,6 +19,7 @@ __all__ = [
     "hr",
     "marketing",
     "monitoring",
+    "project_templates",
     "projects",
     "support",
 ]

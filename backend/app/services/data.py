@@ -3,13 +3,47 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Dict, List
 
-from ..schemas.clients import Client, ClientSegment, Contact, Document, Industry, Interaction, InteractionChannel, ClientSummary
-from ..schemas.projects import Milestone, Project, ProjectStatus, Task, TaskStatus, ProjectSummary
+from ..schemas.clients import (
+    Client,
+    ClientCreateRequest,
+    ClientDashboard,
+    ClientFinancialSnapshot,
+    ClientInvoiceDigest,
+    ClientPaymentDigest,
+    ClientProjectDigest,
+    ClientSegment,
+    ClientSummary,
+    ClientSupportSnapshot,
+    ClientTicketDigest,
+    ClientWithProjects,
+    Contact,
+    Document,
+    Industry,
+    Interaction,
+    InteractionChannel,
+)
+from ..schemas.projects import (
+    Milestone,
+    Project,
+    ProjectStatus,
+    ProjectSummary,
+    ProjectTemplateType,
+    Task,
+    TaskStatus,
+)
 from ..schemas.financials import Expense, FinancialSummary, Invoice, InvoiceStatus, LineItem, Payment
 from ..schemas.support import Channel, KnowledgeArticle, Message, SupportSummary, Ticket, TicketStatus
 from ..schemas.hr import Employee, EmploymentType, ResourceCapacity, Skill, TimeOffRequest, TimeOffStatus
-from ..schemas.marketing import Campaign, Channel as MarketingChannel, ContentItem, ContentStatus, MarketingSummary, MetricSnapshot
+from ..schemas.marketing import (
+    Campaign,
+    Channel as MarketingChannel,
+    ContentItem,
+    ContentStatus,
+    MarketingSummary,
+    MetricSnapshot,
+)
 from ..schemas.monitoring import Alert, Check, MonitoringSummary, Site, SiteStatus
+from .project_templates import build_plan, project_code, template_library
 
 
 class InMemoryStore:
@@ -73,7 +107,7 @@ class InMemoryStore:
             name="Sunset Boutique Website Refresh",
             code="DIS-WEB-2024-01",
             client_id=disenyorita_client.id,
-            project_type="website_design",
+            project_type=ProjectTemplateType.WEBSITE.value,
             status=ProjectStatus.IN_PROGRESS,
             start_date=now - timedelta(days=21),
             manager_id="user-1",
@@ -87,7 +121,7 @@ class InMemoryStore:
             name="Harborfront Hotel Audit",
             code="ISL-AUD-2024-02",
             client_id=disenyorita_client.id,
-            project_type="hotel_audit",
+            project_type=ProjectTemplateType.CONSULTING.value,
             status=ProjectStatus.PLANNING,
             start_date=now - timedelta(days=7),
             manager_id="user-2",
@@ -164,6 +198,269 @@ class InMemoryStore:
         self.checks[check.id] = check
         alert = Alert(site_id=site.id, message="SSL certificate expires in 7 days", severity="warning", triggered_at=now - timedelta(hours=3))
         self.alerts[alert.id] = alert
+
+    def _generate_project_code(self, template_id: str) -> str:
+        prefix = template_library.code_prefix(template_id)
+        sequence = sum(
+            1 for project in self.projects.values() if project.project_type == template_id
+        ) + 1
+        return project_code(prefix, sequence)
+
+    @staticmethod
+    def _calculate_project_end(tasks: List[Task], milestones: List[Milestone]) -> datetime | None:
+        due_dates = [task.due_date for task in tasks if task.due_date]
+        due_dates.extend(milestone.due_date for milestone in milestones)
+        if not due_dates:
+            return None
+        return max(due_dates)
+
+    def create_client_with_projects(self, payload: ClientCreateRequest) -> ClientWithProjects:
+        client = Client(
+            organization_name=payload.organization_name,
+            industry=payload.industry,
+            segment=payload.segment,
+            billing_email=payload.billing_email,
+            preferred_channel=payload.preferred_channel,
+            timezone=payload.timezone,
+            contacts=[
+                Contact(
+                    **contact.dict(exclude={"id", "created_at", "updated_at", "deleted_at"})
+                )
+                for contact in payload.contacts
+            ],
+        )
+
+        project_setups = [setup.copy() for setup in payload.projects]
+        branding_reference = next(
+            (setup.name for setup in project_setups if setup.template_id == ProjectTemplateType.BRANDING.value),
+            None,
+        )
+        if branding_reference:
+            for idx, setup in enumerate(project_setups):
+                if (
+                    setup.template_id == ProjectTemplateType.WEBSITE.value
+                    and setup.start_after_name is None
+                ):
+                    project_setups[idx] = setup.copy(update={"start_after_name": branding_reference})
+
+        pending = list(project_setups)
+        scheduled_completion: Dict[str, datetime] = {}
+        created_projects: List[Project] = []
+        known_names = {setup.name for setup in pending}
+
+        while pending:
+            progress_made = False
+            for setup in list(pending):
+                dependency_name = setup.start_after_name
+                dependency_completion = None
+                if dependency_name:
+                    if dependency_name not in known_names:
+                        raise ValueError(
+                            f"Project '{setup.name}' depends on unknown project '{dependency_name}'"
+                        )
+                    if dependency_name not in scheduled_completion:
+                        continue
+                    dependency_completion = scheduled_completion[dependency_name]
+
+                actual_start = setup.start_date
+                if dependency_completion:
+                    actual_start = max(actual_start, dependency_completion)
+
+                tasks, milestones = build_plan(setup.template_id, actual_start)
+                project_end = self._calculate_project_end(tasks, milestones)
+
+                project = Project(
+                    name=setup.name,
+                    code=self._generate_project_code(setup.template_id),
+                    client_id=client.id,
+                    project_type=setup.template_id,
+                    status=ProjectStatus.PLANNING,
+                    start_date=actual_start,
+                    end_date=project_end,
+                    manager_id=setup.manager_id,
+                    budget=setup.budget,
+                    currency=setup.currency,
+                    tasks=tasks,
+                    milestones=milestones,
+                )
+
+                self.projects[project.id] = project
+                created_projects.append(project)
+                scheduled_completion[setup.name] = project_end or actual_start
+                pending.remove(setup)
+                progress_made = True
+
+            if not progress_made:
+                unresolved = ", ".join(setup.name for setup in pending)
+                raise ValueError(f"Unable to resolve project scheduling for: {unresolved}")
+
+        self.clients[client.id] = client
+
+        return ClientWithProjects(client=client, projects=created_projects)
+
+    def client_dashboard(self, client_id: str) -> ClientDashboard:
+        client = self.clients.get(client_id)
+        if not client:
+            raise ValueError("Client not found")
+
+        now = datetime.utcnow()
+
+        project_digests: List[ClientProjectDigest] = []
+        client_projects = [
+            project for project in self.projects.values() if project.client_id == client_id
+        ]
+        for project in sorted(client_projects, key=lambda proj: proj.start_date):
+            late_tasks = sorted(
+                (
+                    task
+                    for task in project.tasks
+                    if task.due_date and task.due_date < now and task.status != TaskStatus.DONE
+                ),
+                key=lambda task: task.due_date,
+            )
+
+            upcoming_tasks = sorted(
+                (
+                    task
+                    for task in project.tasks
+                    if task.status != TaskStatus.DONE and task.due_date and task.due_date >= now
+                ),
+                key=lambda task: task.due_date,
+            )
+            next_task = upcoming_tasks[0] if upcoming_tasks else next(
+                (task for task in project.tasks if task.status != TaskStatus.DONE),
+                None,
+            )
+
+            upcoming_milestones = sorted(
+                (milestone for milestone in project.milestones if not milestone.completed),
+                key=lambda milestone: milestone.due_date,
+            )
+
+            project_digests.append(
+                ClientProjectDigest(
+                    id=project.id,
+                    code=project.code,
+                    name=project.name,
+                    project_type=project.project_type,
+                    status=project.status,
+                    start_date=project.start_date,
+                    end_date=project.end_date,
+                    manager_id=project.manager_id,
+                    budget=project.budget,
+                    currency=project.currency,
+                    late_tasks=late_tasks,
+                    next_task=next_task,
+                    next_milestone=upcoming_milestones[0] if upcoming_milestones else None,
+                )
+            )
+
+        client_invoices = [
+            invoice for invoice in self.invoices.values() if invoice.client_id == client_id
+        ]
+        invoice_lookup = {invoice.id: invoice for invoice in client_invoices}
+
+        outstanding_invoices: List[ClientInvoiceDigest] = []
+        for invoice in client_invoices:
+            invoice_total = sum(item.total for item in invoice.items) if invoice.items else 0.0
+            payments = [
+                payment.amount
+                for payment in self.payments.values()
+                if payment.invoice_id == invoice.id
+            ]
+            paid_total = sum(payments)
+            balance_due = max(invoice_total - paid_total, 0.0)
+
+            project_name = None
+            if invoice.project_id:
+                project = self.projects.get(invoice.project_id)
+                if project:
+                    project_name = project.name
+
+            digest = ClientInvoiceDigest(
+                id=invoice.id,
+                number=invoice.number,
+                status=invoice.status,
+                due_date=invoice.due_date,
+                total=invoice_total,
+                balance_due=balance_due,
+                currency=invoice.currency,
+                project_id=invoice.project_id,
+                project_name=project_name,
+            )
+            if invoice.status in {InvoiceStatus.SENT, InvoiceStatus.OVERDUE} and balance_due > 0:
+                outstanding_invoices.append(digest)
+
+        outstanding_invoices.sort(key=lambda invoice: invoice.due_date)
+        total_outstanding = sum(invoice.balance_due for invoice in outstanding_invoices)
+        next_invoice_due = outstanding_invoices[0] if outstanding_invoices else None
+
+        client_payments = [
+            payment
+            for payment in self.payments.values()
+            if payment.invoice_id in invoice_lookup
+        ]
+        payment_digests = [
+            ClientPaymentDigest(
+                id=payment.id,
+                invoice_id=payment.invoice_id,
+                invoice_number=invoice_lookup.get(payment.invoice_id).number
+                if invoice_lookup.get(payment.invoice_id)
+                else None,
+                amount=payment.amount,
+                received_at=payment.received_at,
+                method=payment.method,
+            )
+            for payment in client_payments
+        ]
+        payment_digests.sort(key=lambda payment: payment.received_at, reverse=True)
+
+        financial_snapshot = ClientFinancialSnapshot(
+            outstanding_invoices=outstanding_invoices,
+            next_invoice_due=next_invoice_due,
+            recent_payments=payment_digests,
+            total_outstanding=total_outstanding,
+        )
+
+        client_tickets = [
+            ticket for ticket in self.tickets.values() if ticket.client_id == client_id
+        ]
+        ticket_activity = [
+            message.sent_at
+            for ticket in client_tickets
+            for message in ticket.messages
+        ]
+        open_ticket_digests = []
+        for ticket in client_tickets:
+            if ticket.status in {TicketStatus.OPEN, TicketStatus.IN_PROGRESS}:
+                last_activity = max((message.sent_at for message in ticket.messages), default=None)
+                open_ticket_digests.append(
+                    ClientTicketDigest(
+                        id=ticket.id,
+                        subject=ticket.subject,
+                        status=ticket.status,
+                        priority=ticket.priority,
+                        sla_due=ticket.sla_due,
+                        last_activity_at=last_activity,
+                    )
+                )
+
+        open_ticket_digests.sort(
+            key=lambda ticket: ticket.last_activity_at or datetime.min,
+            reverse=True,
+        )
+
+        support_snapshot = ClientSupportSnapshot(
+            open_tickets=open_ticket_digests,
+            last_ticket_update=max(ticket_activity) if ticket_activity else None,
+        )
+
+        return ClientDashboard(
+            client=client,
+            projects=project_digests,
+            financials=financial_snapshot,
+            support=support_snapshot,
+        )
 
     def project_summary(self) -> ProjectSummary:
         by_status: Dict[str, int] = {status.value: 0 for status in ProjectStatus}
