@@ -6,6 +6,7 @@ BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 BACKEND_VENV="$BACKEND_DIR/.venv"
 BACKEND_PYTHON=""
+
 PIDS=()
 CLEANED_UP=0
 
@@ -130,6 +131,7 @@ fi
 info "Installing backend dependencies..."
 "$BACKEND_PYTHON" -m pip install -r "$BACKEND_DIR/requirements.txt"
 
+
 # 4. Prepare frontend dependencies
 if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
   info "Installing frontend dependencies (this may take a moment)..."
@@ -144,6 +146,7 @@ start_backend() {
     cd "$BACKEND_DIR"
     load_env_if_present "$BACKEND_DIR/.env"
     exec "$BACKEND_PYTHON" -m uvicorn app.main:app --reload
+
   ) &
   local pid=$!
   PIDS+=("$pid")
