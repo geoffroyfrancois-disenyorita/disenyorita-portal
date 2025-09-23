@@ -6,10 +6,10 @@ from typing import Dict, List
 from ..schemas.clients import Client, ClientSegment, Contact, Document, Industry, Interaction, InteractionChannel, ClientSummary
 from ..schemas.projects import Milestone, Project, ProjectStatus, Task, TaskStatus, ProjectSummary
 from ..schemas.financials import Expense, FinancialSummary, Invoice, InvoiceStatus, LineItem, Payment
-from ..schemas.support import Alert, Channel, KnowledgeArticle, Message, SupportSummary, Ticket, TicketStatus
+from ..schemas.support import Channel, KnowledgeArticle, Message, SupportSummary, Ticket, TicketStatus
 from ..schemas.hr import Employee, EmploymentType, ResourceCapacity, Skill, TimeOffRequest, TimeOffStatus
 from ..schemas.marketing import Campaign, Channel as MarketingChannel, ContentItem, ContentStatus, MarketingSummary, MetricSnapshot
-from ..schemas.monitoring import Check, MonitoringSummary, Site, SiteStatus
+from ..schemas.monitoring import Alert, Check, MonitoringSummary, Site, SiteStatus
 
 
 class InMemoryStore:
@@ -193,7 +193,15 @@ class InMemoryStore:
         )
 
     def financial_summary(self) -> FinancialSummary:
-        outstanding = sum(invoice.items[0].total for invoice in self.invoices.values() if invoice.status in {InvoiceStatus.SENT, InvoiceStatus.OVERDUE})
+        outstanding = 0.0
+        for invoice in self.invoices.values():
+            if invoice.status not in {InvoiceStatus.SENT, InvoiceStatus.OVERDUE}:
+                continue
+            invoice_total = sum(item.total for item in invoice.items) if invoice.items else 0.0
+            payments_total = sum(
+                payment.amount for payment in self.payments.values() if payment.invoice_id == invoice.id
+            )
+            outstanding += max(invoice_total - payments_total, 0.0)
         overdue = sum(1 for invoice in self.invoices.values() if invoice.status == InvoiceStatus.OVERDUE)
         expenses = sum(expense.amount for expense in self.expenses.values())
         return FinancialSummary(
