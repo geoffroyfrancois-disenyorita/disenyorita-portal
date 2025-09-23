@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Sequence
 
 from ..schemas.clients import (
     Client,
@@ -31,7 +31,22 @@ from ..schemas.projects import (
     Task,
     TaskStatus,
 )
-from ..schemas.financials import Expense, FinancialSummary, Invoice, InvoiceStatus, LineItem, Payment
+from ..schemas.financials import (
+    Currency,
+    DeductionOpportunity,
+    Expense,
+    FinancialSummary,
+    Invoice,
+    InvoiceStatus,
+    LineItem,
+    MacroFinancials,
+    Payment,
+    PricingSuggestion,
+    ProjectFinancials,
+    TaxComputationRequest,
+    TaxComputationResponse,
+    TaxEntry,
+)
 from ..schemas.support import Channel, KnowledgeArticle, Message, SupportSummary, Ticket, TicketStatus
 from ..schemas.hr import Employee, EmploymentType, ResourceCapacity, Skill, TimeOffRequest, TimeOffStatus
 from ..schemas.marketing import (
@@ -44,6 +59,16 @@ from ..schemas.marketing import (
 )
 from ..schemas.monitoring import Alert, Check, MonitoringSummary, Site, SiteStatus
 from .project_templates import build_plan, project_code, template_library
+
+
+PH_TAX_BRACKETS: Sequence[Dict[str, float]] = (
+    {"min": 0.0, "max": 250_000.0, "base": 0.0, "rate": 0.0},
+    {"min": 250_000.0, "max": 400_000.0, "base": 0.0, "rate": 0.2},
+    {"min": 400_000.0, "max": 800_000.0, "base": 30_000.0, "rate": 0.25},
+    {"min": 800_000.0, "max": 2_000_000.0, "base": 130_000.0, "rate": 0.3},
+    {"min": 2_000_000.0, "max": 8_000_000.0, "base": 490_000.0, "rate": 0.32},
+    {"min": 8_000_000.0, "max": float("inf"), "base": 2_410_000.0, "rate": 0.35},
+)
 
 
 class InMemoryStore:
@@ -148,6 +173,34 @@ class InMemoryStore:
         self.payments[payment.id] = payment
         expense = Expense(project_id=website_project.id, category="Software", amount=320, incurred_at=now - timedelta(days=4))
         self.expenses[expense.id] = expense
+
+        retainer_invoice = Invoice(
+            client_id=disenyorita_client.id,
+            project_id=audit_project.id,
+            number="INV-2024-00087",
+            status=InvoiceStatus.PAID,
+            issue_date=now - timedelta(days=32),
+            due_date=now - timedelta(days=2),
+            items=[
+                LineItem(description="On-site Audit", quantity=1, unit_price=5200, total=5200),
+                LineItem(description="Reporting & Analysis", quantity=1, unit_price=1800, total=1800),
+            ],
+        )
+        self.invoices[retainer_invoice.id] = retainer_invoice
+        audit_payment = Payment(
+            invoice_id=retainer_invoice.id,
+            amount=7000,
+            received_at=now - timedelta(days=1),
+            method="bank_transfer",
+        )
+        self.payments[audit_payment.id] = audit_payment
+        audit_expense = Expense(
+            project_id=audit_project.id,
+            category="Travel",
+            amount=540,
+            incurred_at=now - timedelta(days=6),
+        )
+        self.expenses[audit_expense.id] = audit_expense
 
         # Support
         ticket = Ticket(
@@ -507,6 +560,154 @@ class InMemoryStore:
             overdue_invoices=overdue,
             expenses_this_month=expenses,
         )
+
+    def project_financials(self) -> List[ProjectFinancials]:
+        project_financials: List[ProjectFinancials] = []
+        for project in self.projects.values():
+            project_invoices = [invoice for invoice in self.invoices.values() if invoice.project_id == project.id]
+            invoice_ids = {invoice.id for invoice in project_invoices}
+            total_invoiced = sum(
+                sum(item.total for item in invoice.items) for invoice in project_invoices if invoice.items
+            )
+            total_collected = sum(
+                payment.amount for payment in self.payments.values() if payment.invoice_id in invoice_ids
+            )
+            total_expenses = sum(expense.amount for expense in self.expenses.values() if expense.project_id == project.id)
+            outstanding_amount = max(total_invoiced - total_collected, 0.0)
+            client_name = None
+            if project.client_id in self.clients:
+                client_name = self.clients[project.client_id].organization_name
+            currency = project_invoices[0].currency if project_invoices else Currency.USD
+            project_financials.append(
+                ProjectFinancials(
+                    project_id=project.id,
+                    project_name=project.name,
+                    client_name=client_name,
+                    currency=currency,
+                    total_invoiced=total_invoiced,
+                    total_collected=total_collected,
+                    total_expenses=total_expenses,
+                    outstanding_amount=outstanding_amount,
+                    net_revenue=total_collected - total_expenses,
+                )
+            )
+        project_financials.sort(key=lambda record: record.project_name)
+        return project_financials
+
+    def macro_financials(self) -> MacroFinancials:
+        project_financials = self.project_financials()
+        total_invoiced = sum(project.total_invoiced for project in project_financials)
+        total_collected = sum(project.total_collected for project in project_financials)
+        total_expenses = sum(project.total_expenses for project in project_financials)
+        total_outstanding = sum(project.outstanding_amount for project in project_financials)
+        return MacroFinancials(
+            total_invoiced=total_invoiced,
+            total_collected=total_collected,
+            total_outstanding=total_outstanding,
+            total_expenses=total_expenses,
+            net_cash_flow=total_collected - total_expenses,
+        )
+
+    def _calculate_income_tax(self, taxable_income: float) -> float:
+        for bracket in PH_TAX_BRACKETS:
+            if taxable_income > bracket["min"] and taxable_income <= bracket["max"]:
+                return bracket["base"] + (taxable_income - bracket["min"]) * bracket["rate"]
+        return 0.0
+
+    def calculate_tax(self, request: TaxComputationRequest) -> TaxComputationResponse:
+        def safe_total(entries: List[TaxEntry]) -> float:
+            return sum(max(entry.amount, 0.0) for entry in entries)
+
+        gross_revenue = safe_total(request.incomes)
+        total_cost_of_sales = safe_total(request.cost_of_sales)
+        total_operating_expenses = safe_total(request.operating_expenses)
+        total_other_deductions = safe_total(request.other_deductions)
+        taxable_income = max(gross_revenue - total_cost_of_sales - total_operating_expenses - total_other_deductions, 0.0)
+        income_tax = self._calculate_income_tax(taxable_income)
+        percentage_tax = (
+            (gross_revenue * max(request.percentage_tax_rate, 0.0)) / 100.0 if request.apply_percentage_tax else 0.0
+        )
+        vat_due = gross_revenue * 0.12 if request.vat_registered else 0.0
+        total_tax = income_tax + percentage_tax + vat_due
+        effective_rate = (total_tax / gross_revenue * 100.0) if gross_revenue > 0 else 0.0
+
+        deduction_opportunities: List[DeductionOpportunity] = []
+        tracked_categories = {entry.label.lower() for entry in request.other_deductions}
+        statutory_categories = {
+            "sss": "Include SSS contributions made for the proprietor to lower taxable income.",
+            "philhealth": "PhilHealth premiums qualify as allowable deductions when properly documented.",
+            "pag-ibig": "Pag-IBIG savings and MP2 dividends may be deductible—keep official receipts ready.",
+            "depreciation": "Consider depreciating large equipment purchases instead of expensing them upfront.",
+        }
+        for keyword, message in statutory_categories.items():
+            if keyword not in tracked_categories:
+                deduction_opportunities.append(DeductionOpportunity(category=keyword, message=message))
+
+        if gross_revenue > 0 and total_operating_expenses / gross_revenue < 0.2:
+            deduction_opportunities.append(
+                DeductionOpportunity(
+                    category="operating expenses",
+                    message="Operating expenses are below 20% of revenue. Review utilities, rent, and admin costs to ensure"
+                    " everything is captured.",
+                )
+            )
+
+        return TaxComputationResponse(
+            gross_revenue=gross_revenue,
+            total_cost_of_sales=total_cost_of_sales,
+            total_operating_expenses=total_operating_expenses,
+            total_other_deductions=total_other_deductions,
+            taxable_income=taxable_income,
+            income_tax=income_tax,
+            percentage_tax=percentage_tax,
+            vat_due=vat_due,
+            total_tax=total_tax,
+            effective_tax_rate=effective_rate,
+            deduction_opportunities=deduction_opportunities,
+        )
+
+    def pricing_suggestions(self) -> List[PricingSuggestion]:
+        suggestions: List[PricingSuggestion] = []
+        target_margin = 0.45
+        for project in self.project_financials():
+            revenue = project.total_collected or project.total_invoiced
+            if revenue <= 0:
+                continue
+
+            current_margin = (project.net_revenue / revenue) if revenue else 0.0
+            expenses = project.total_expenses
+            recommended_rate = revenue
+            adjustment_pct = 0.0
+            rationale_parts: List[str] = []
+
+            if current_margin < target_margin:
+                recommended_rate = expenses / (1 - target_margin) if expenses > 0 else revenue
+                adjustment_pct = ((recommended_rate - revenue) / revenue) * 100 if revenue else 0.0
+                rationale_parts.append(
+                    f"Margin is {current_margin * 100:.1f}% which is below the {target_margin * 100:.0f}% target."
+                )
+                rationale_parts.append("Recommend increasing rates or introducing premium packages to protect margin.")
+            else:
+                rationale_parts.append(
+                    "Healthy margin achieved. Consider bundling value-add services to capture more revenue while maintaining"
+                    " utilization."
+                )
+
+            suggestions.append(
+                PricingSuggestion(
+                    project_id=project.project_id,
+                    service=project.project_name,
+                    current_rate=revenue,
+                    recommended_rate=recommended_rate,
+                    current_margin=current_margin * 100,
+                    recommended_adjustment_pct=adjustment_pct,
+                    rationale=" ".join(rationale_parts),
+                    currency=project.currency,
+                )
+            )
+
+        suggestions.sort(key=lambda suggestion: suggestion.recommended_adjustment_pct, reverse=True)
+        return suggestions
 
     def support_summary(self) -> SupportSummary:
         open_tickets = sum(1 for ticket in self.tickets.values() if ticket.status in {TicketStatus.OPEN, TicketStatus.IN_PROGRESS})

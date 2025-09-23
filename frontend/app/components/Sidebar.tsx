@@ -9,6 +9,7 @@ const navItems = [
   { href: "/projects", label: "Projects" },
   { href: "/clients", label: "Clients" },
   { href: "/financials", label: "Financials" },
+  { href: "/financials/tax-calculator", label: "Tax tools" },
   { href: "/support", label: "Support" },
   { href: "/hr", label: "People" },
   { href: "/marketing", label: "Marketing" },

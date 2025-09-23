@@ -4,6 +4,9 @@ from pathlib import Path
 import sys
 from typing import ForwardRef
 
+import pytest
+from fastapi.testclient import TestClient
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -20,8 +23,6 @@ if "recursive_guard" in _forward_ref_signature.parameters:
 
     ForwardRef._evaluate = _patched_forward_ref_evaluate
 
-
-from fastapi.testclient import TestClient
 
 from app.main import app
 from app.schemas.financials import Invoice, InvoiceStatus, LineItem, Payment
@@ -84,3 +85,26 @@ def test_financial_summary_outstanding_reflects_partial_payments() -> None:
     finally:
         store.invoices.pop(invoice.id, None)
         store.payments.pop(payment.id, None)
+
+
+def test_project_financials_rollup_consistency() -> None:
+    project_response = client.get("/api/v1/financials/projects")
+    assert project_response.status_code == 200
+    projects = project_response.json()
+    assert isinstance(projects, list)
+    assert projects, "expected seeded projects in store"
+
+    overview_response = client.get("/api/v1/financials/overview")
+    assert overview_response.status_code == 200
+    overview = overview_response.json()
+
+    total_invoiced = sum(project["total_invoiced"] for project in projects)
+    total_collected = sum(project["total_collected"] for project in projects)
+    total_expenses = sum(project["total_expenses"] for project in projects)
+    total_outstanding = sum(project["outstanding_amount"] for project in projects)
+
+    assert overview["total_invoiced"] == pytest.approx(total_invoiced)
+    assert overview["total_collected"] == pytest.approx(total_collected)
+    assert overview["total_expenses"] == pytest.approx(total_expenses)
+    assert overview["total_outstanding"] == pytest.approx(total_outstanding)
+    assert overview["net_cash_flow"] == pytest.approx(total_collected - total_expenses)
