@@ -25,6 +25,14 @@ export const api = {
   projects: () => request<Project[]>("/projects"),
   clients: () => request<Client[]>("/clients"),
   invoices: () => request<Invoice[]>("/financials/invoices"),
+  financialOverview: () => request<MacroFinancials>("/financials/overview"),
+  projectFinancials: () => request<ProjectFinancials[]>("/financials/projects"),
+  pricingSuggestions: () => request<PricingSuggestion[]>("/financials/pricing/suggestions"),
+  computeTax: (payload: TaxComputationPayload) =>
+    request<TaxComputationResult>("/financials/tax/compute", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   supportTickets: () => request<Ticket[]>("/support/tickets"),
   employees: () => request<Employee[]>("/hr/employees"),
   campaigns: () => request<Campaign[]>("/marketing/campaigns"),
@@ -120,6 +128,71 @@ export interface Invoice {
   issue_date: string;
   due_date: string;
   items: LineItem[];
+}
+
+export interface ProjectFinancials {
+  project_id: string;
+  project_name: string;
+  client_name?: string | null;
+  currency: string;
+  total_invoiced: number;
+  total_collected: number;
+  total_expenses: number;
+  outstanding_amount: number;
+  net_revenue: number;
+}
+
+export interface MacroFinancials {
+  total_invoiced: number;
+  total_collected: number;
+  total_outstanding: number;
+  total_expenses: number;
+  net_cash_flow: number;
+}
+
+export interface TaxEntryInput {
+  label: string;
+  amount: number;
+}
+
+export interface TaxComputationPayload {
+  incomes: TaxEntryInput[];
+  cost_of_sales: TaxEntryInput[];
+  operating_expenses: TaxEntryInput[];
+  other_deductions: TaxEntryInput[];
+  apply_percentage_tax: boolean;
+  percentage_tax_rate: number;
+  vat_registered: boolean;
+}
+
+export interface DeductionOpportunity {
+  category: string;
+  message: string;
+}
+
+export interface TaxComputationResult {
+  gross_revenue: number;
+  total_cost_of_sales: number;
+  total_operating_expenses: number;
+  total_other_deductions: number;
+  taxable_income: number;
+  income_tax: number;
+  percentage_tax: number;
+  vat_due: number;
+  total_tax: number;
+  effective_tax_rate: number;
+  deduction_opportunities: DeductionOpportunity[];
+}
+
+export interface PricingSuggestion {
+  project_id: string;
+  service: string;
+  current_rate: number;
+  recommended_rate: number;
+  current_margin: number;
+  recommended_adjustment_pct: number;
+  rationale: string;
+  currency: string;
 }
 
 export interface LineItem {
