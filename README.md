@@ -218,5 +218,19 @@ npm run dev
 
 The frontend expects `NEXT_PUBLIC_API_BASE` (default `http://localhost:8000/api/v1`) and the backend reads `.env` values for secrets and CORS configuration. Replace the in-memory seed data with your production database of choice as the next milestone.
 
+### Launch helper scripts
+
+For convenience the repository provides wrapper scripts that set up dependencies and start both services together:
+
+```bash
+# macOS/Linux
+./launch.sh
+
+# Windows (PowerShell)
+pwsh -File launch.ps1
+```
+
+Both scripts automatically create the backend virtual environment, install/update dependencies, load environment variables from any available `.env` files, and then run the FastAPI and Next.js development servers. When you are finished, press <kbd>Ctrl</kbd>+<kbd>C</kbd> in the same terminal and the scripts will shut down both processes cleanly.
+
 ## Testing
 ⚠️ Tests not run (planning document only).
