@@ -22,6 +22,8 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
 
 export const api = {
   dashboard: () => request<DashboardSnapshot>("/dashboard"),
+  automationDigest: () => request<AutomationDigest>("/automation/digest"),
+  automationHistory: () => request<AutomationDigest[]>("/automation/digest/history"),
   projects: () => request<Project[]>("/projects"),
   project: (projectId: string) => request<Project>(`/projects/${projectId}`),
   updateProject: (projectId: string, payload: ProjectUpdatePayload) =>
@@ -47,6 +49,7 @@ export const api = {
   financialOverview: () => request<MacroFinancials>("/financials/overview"),
   projectFinancials: () => request<ProjectFinancials[]>("/financials/projects"),
   pricingSuggestions: () => request<PricingSuggestion[]>("/financials/pricing/suggestions"),
+  taxProfile: () => request<TaxProfile>("/financials/tax/profile"),
   computeTax: (payload: TaxComputationPayload) =>
     request<TaxComputationResult>("/financials/tax/compute", {
       method: "POST",
@@ -54,6 +57,7 @@ export const api = {
     }),
   supportTickets: () => request<Ticket[]>("/support/tickets"),
   employees: () => request<Employee[]>("/hr/employees"),
+  hrTimeOff: () => request<TimeOffRequest[]>("/hr/time-off"),
   campaigns: () => request<Campaign[]>("/marketing/campaigns"),
   siteStatuses: () => request<SiteStatus[]>("/monitoring/sites")
 };
@@ -92,6 +96,36 @@ export interface DashboardSnapshot {
     avg_response_time_ms: number;
     failing_checks: number;
   };
+}
+
+export type AutomationCategory =
+  | "client"
+  | "project"
+  | "finance"
+  | "support"
+  | "marketing"
+  | "monitoring"
+  | "hr";
+
+export type AutomationPriority = "low" | "medium" | "high" | "critical";
+
+export interface AutomationTask {
+  id: string;
+  category: AutomationCategory;
+  summary: string;
+  priority: AutomationPriority;
+  due_at?: string | null;
+  suggested_assignee?: string | null;
+  details?: string | null;
+  related_ids: Record<string, string>;
+  action_label?: string | null;
+  action_url?: string | null;
+}
+
+export interface AutomationDigest {
+  id: string;
+  generated_at: string;
+  tasks: AutomationTask[];
 }
 
 export interface Project {
@@ -414,6 +448,19 @@ export interface TaxComputationResult {
   deduction_opportunities: DeductionOpportunity[];
 }
 
+export interface TaxProfile {
+  incomes: TaxEntryInput[];
+  cost_of_sales: TaxEntryInput[];
+  operating_expenses: TaxEntryInput[];
+  other_deductions: TaxEntryInput[];
+  apply_percentage_tax: boolean;
+  percentage_tax_rate: number;
+  vat_registered: boolean;
+  last_updated: string;
+  source_summary: Record<string, number>;
+  computed: TaxComputationResult;
+}
+
 export interface PricingSuggestion {
   project_id: string;
   service: string;
@@ -448,6 +495,14 @@ export interface Employee {
   email: string;
   employment_type: string;
   title: string;
+}
+
+export interface TimeOffRequest {
+  id: string;
+  employee_id: string;
+  start_date: string;
+  end_date: string;
+  status: string;
 }
 
 export interface Campaign {

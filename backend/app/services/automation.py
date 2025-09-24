@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from typing import Iterable, List
+from urllib.parse import quote_plus
 
 from ..schemas.automation import (
     AutomationCategory,
@@ -12,11 +13,11 @@ from ..schemas.automation import (
     AutomationPriority,
     AutomationTask,
 )
-from ..schemas.clients import ClientEngagement
+from ..schemas.clients import Client, ClientEngagement
 from ..schemas.financials import Invoice, InvoiceStatus
 from ..schemas.hr import Employee, TimeOffStatus
 from ..schemas.marketing import Campaign, ContentItem, ContentStatus
-from ..schemas.monitoring import Site
+from ..schemas.monitoring import Check, Site
 from ..schemas.projects import ProjectHealth, ProjectStatus
 from ..schemas.support import TicketStatus
 from .data import InMemoryStore
@@ -35,6 +36,7 @@ class _Context:
     """Lightweight cache of frequently accessed store entities."""
 
     clients: dict[str, ClientEngagement]
+    client_records: dict[str, Client]
     employees: dict[str, Employee]
     campaigns: dict[str, Campaign]
     sites: dict[str, Site]
@@ -58,6 +60,7 @@ class AutomationEngine:
 
         context = _Context(
             clients={eng.client_id: eng for eng in self._store.client_engagements()},
+            client_records=self._store.clients,
             employees=self._store.employees,
             campaigns=self._store.campaigns,
             sites=self._store.sites,
@@ -65,11 +68,13 @@ class AutomationEngine:
 
         tasks.extend(self._client_tasks(context.clients.values()))
         tasks.extend(self._project_tasks())
-        tasks.extend(self._financial_tasks())
+        tasks.extend(self._financial_tasks(context))
         tasks.extend(self._support_tasks())
         tasks.extend(self._marketing_tasks(context))
         tasks.extend(self._monitoring_tasks(context))
         tasks.extend(self._hr_tasks(context))
+        tasks.extend(self._recurring_tasks(context))
+        tasks.extend(self._tax_tasks())
 
         tasks.sort(key=self._sort_key)
         return AutomationDigest(generated_at=self.now, tasks=tasks)
@@ -115,6 +120,8 @@ class AutomationEngine:
                     due_at=due_at,
                     details="; ".join(details) if details else None,
                     related_ids={"client_id": engagement.client_id},
+                    action_label="Open client dashboard",
+                    action_url=f"/clients/{engagement.client_id}",
                 )
             )
         return tasks
@@ -158,11 +165,13 @@ class AutomationEngine:
                         "project_id": progress.project_id,
                         "client_id": progress.client_id,
                     },
+                    action_label="Review project",
+                    action_url=f"/projects/{progress.project_id}",
                 )
             )
         return tasks
 
-    def _financial_tasks(self) -> List[AutomationTask]:
+    def _financial_tasks(self, context: _Context) -> List[AutomationTask]:
         tasks: List[AutomationTask] = []
         for invoice in self._store.invoices.values():
             if invoice.status not in {InvoiceStatus.SENT, InvoiceStatus.OVERDUE}:
@@ -180,6 +189,17 @@ class AutomationEngine:
                 priority = AutomationPriority.HIGH if days_until_due <= 14 else AutomationPriority.MEDIUM
                 due_at = invoice.due_date if days_until_due <= 21 else None
 
+            client = context.client_records.get(invoice.client_id)
+            if client:
+                subject = quote_plus(f"Invoice {invoice.number} payment reminder")
+                body = quote_plus(
+                    "Hi team, just a friendly reminder that invoice "
+                    f"{invoice.number} is due on {invoice.due_date.date()}. Please let us know if you need anything."
+                )
+                action_url = f"mailto:{client.billing_email}?subject={subject}&body={body}"
+            else:
+                action_url = "/financials"
+
             tasks.append(
                 AutomationTask(
                     category=AutomationCategory.FINANCE,
@@ -188,6 +208,8 @@ class AutomationEngine:
                     due_at=due_at,
                     details=f"Balance due ${balance:,.2f} by {invoice.due_date.date()}",
                     related_ids={"invoice_id": invoice.id, "client_id": invoice.client_id},
+                    action_label="Send reminder",
+                    action_url=action_url,
                 )
             )
         return tasks
@@ -217,6 +239,8 @@ class AutomationEngine:
                     details=f"Status: {ticket.status.value}, Priority: {ticket.priority}",
                     related_ids={"ticket_id": ticket.id, "client_id": ticket.client_id},
                     suggested_assignee=ticket.assignee_id,
+                    action_label="Open ticket",
+                    action_url=f"/support?ticketId={ticket.id}",
                 )
             )
         return tasks
@@ -250,6 +274,8 @@ class AutomationEngine:
                     details="; ".join(details),
                     related_ids=related_ids,
                     suggested_assignee=campaign.owner_id if campaign else None,
+                    action_label="Prep content",
+                    action_url=f"/marketing?contentId={content.id}",
                 )
             )
         return tasks
@@ -279,6 +305,8 @@ class AutomationEngine:
                     due_at=alert.triggered_at + timedelta(hours=6),
                     details=alert.message,
                     related_ids={"alert_id": alert.id, "site_id": alert.site_id},
+                    action_label="Open incident",
+                    action_url=f"/monitoring?alertId={alert.id}",
                 )
             )
         return tasks
@@ -304,6 +332,118 @@ class AutomationEngine:
                     details=f"Requested {request.start_date} to {request.end_date}",
                     related_ids={"time_off_request_id": request.id, "employee_id": request.employee_id},
                     suggested_assignee=assignee,
+                    action_label="Approve leave",
+                    action_url=f"/hr?requestId={request.id}",
+                )
+            )
+        return tasks
+
+    def _recurring_tasks(self, context: _Context) -> List[AutomationTask]:
+        tasks: List[AutomationTask] = []
+        renewal_window = timedelta(days=45)
+        for client in self._store.clients.values():
+            for document in client.documents:
+                if not document.signed:
+                    continue
+                if "retainer" not in document.name.lower() and "contract" not in document.name.lower():
+                    continue
+
+                renewal_date = document.created_at + timedelta(days=365)
+                if renewal_date < self.now - timedelta(days=5):
+                    continue
+                if renewal_date - self.now > renewal_window:
+                    continue
+
+                if renewal_date <= self.now:
+                    priority = AutomationPriority.CRITICAL
+                    due_at = self.now
+                else:
+                    priority = AutomationPriority.HIGH
+                    due_at = renewal_date - timedelta(days=15)
+
+                tasks.append(
+                    AutomationTask(
+                        category=AutomationCategory.CLIENT,
+                        summary=f"Prep contract renewal for {client.organization_name}",
+                        priority=priority,
+                        due_at=due_at,
+                        details=f"Retainer version {document.version} expires {renewal_date.date()}",
+                        related_ids={"client_id": client.id, "document_id": document.id},
+                        action_label="Review agreement",
+                        action_url=document.url,
+                    )
+                )
+
+        for content in self._store.content_items.values():
+            if content.status != ContentStatus.DRAFT:
+                continue
+            age = self.now - content.created_at
+            if age < timedelta(days=3):
+                continue
+
+            campaign = context.campaigns.get(content.campaign_id) if content.campaign_id else None
+            due_at = content.scheduled_for - timedelta(days=1) if content.scheduled_for else self.now + timedelta(days=1)
+            details = [f"Platform: {content.platform}" if content.platform else "Draft content awaiting approval"]
+            if campaign:
+                details.append(f"Campaign: {campaign.name}")
+
+            tasks.append(
+                AutomationTask(
+                    category=AutomationCategory.MARKETING,
+                    summary=f"Approve content '{content.title}'",
+                    priority=AutomationPriority.HIGH,
+                    due_at=due_at,
+                    details="; ".join(details),
+                    related_ids={"content_id": content.id},
+                    suggested_assignee=campaign.owner_id if campaign else None,
+                    action_label="Approve content",
+                    action_url=f"/marketing?contentId={content.id}",
+                )
+            )
+
+        for check in self._store.checks.values():
+            check_type = check.type.lower()
+            if "soc" not in check_type and "compliance" not in check_type:
+                continue
+
+            time_since_audit = self.now - check.last_run
+            if time_since_audit < timedelta(days=30):
+                continue
+
+            due_at_candidate = check.last_run + timedelta(days=35)
+            due_at = due_at_candidate if due_at_candidate > self.now else self.now + timedelta(days=1)
+            site = context.sites.get(check.site_id)
+            site_label = site.label if site else "Infrastructure"
+
+            tasks.append(
+                AutomationTask(
+                    category=AutomationCategory.MONITORING,
+                    summary=f"Run SOC control review for {site_label}",
+                    priority=AutomationPriority.HIGH,
+                    due_at=due_at,
+                    details=f"Last audit ran {time_since_audit.days} days ago",
+                    related_ids={"check_id": check.id, "site_id": check.site_id},
+                    action_label="Review controls",
+                    action_url=f"/monitoring?checkId={check.id}",
+                )
+            )
+
+        return tasks
+
+    def _tax_tasks(self) -> List[AutomationTask]:
+        tasks: List[AutomationTask] = []
+        profile = self._store.tax_profile()
+        for tip in profile.computed.deduction_opportunities:
+            tasks.append(
+                AutomationTask(
+                    category=AutomationCategory.FINANCE,
+                    summary=f"Document {tip.category.upper()} deductions",
+                    priority=AutomationPriority.MEDIUM,
+                    due_at=self.now + timedelta(days=7),
+                    details=tip.message,
+                    related_ids={"tax_profile": "philippines"},
+                    action_label="Open tax planner",
+                    action_url="/financials/tax-calculator",
                 )
             )
         return tasks

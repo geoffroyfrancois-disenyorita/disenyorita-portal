@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -115,6 +115,19 @@ class TaxComputationResponse(BaseModel):
     total_tax: float
     effective_tax_rate: float
     deduction_opportunities: List[DeductionOpportunity] = Field(default_factory=list)
+
+
+class TaxProfile(BaseModel):
+    incomes: List[TaxEntry] = Field(default_factory=list)
+    cost_of_sales: List[TaxEntry] = Field(default_factory=list)
+    operating_expenses: List[TaxEntry] = Field(default_factory=list)
+    other_deductions: List[TaxEntry] = Field(default_factory=list)
+    apply_percentage_tax: bool = True
+    percentage_tax_rate: float = 3.0
+    vat_registered: bool = False
+    last_updated: datetime
+    source_summary: Dict[str, int] = Field(default_factory=dict)
+    computed: TaxComputationResponse
 
 
 class PricingSuggestion(BaseModel):

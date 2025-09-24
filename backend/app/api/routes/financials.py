@@ -12,6 +12,7 @@ from ...schemas.financials import (
     ProjectFinancials,
     TaxComputationRequest,
     TaxComputationResponse,
+    TaxProfile,
 )
 from ...services.data import store
 
@@ -54,6 +55,11 @@ def project_financials() -> List[ProjectFinancials]:
 @router.get("/overview", response_model=MacroFinancials)
 def macro_financials() -> MacroFinancials:
     return store.macro_financials()
+
+
+@router.get("/tax/profile", response_model=TaxProfile)
+def tax_profile() -> TaxProfile:
+    return store.tax_profile()
 
 
 @router.post("/tax/compute", response_model=TaxComputationResponse)

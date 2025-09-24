@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { api, DashboardSnapshot } from "../lib/api";
+import { AutomationPanel } from "./components/AutomationPanel";
 import { MetricCard } from "./components/MetricCard";
 
 async function getDashboard(): Promise<DashboardSnapshot> {
@@ -44,6 +45,7 @@ export default async function DashboardPage(): Promise<JSX.Element> {
           helper="Clients using secure portal"
         />
       </div>
+      <AutomationPanel />
     </div>
   );
 }

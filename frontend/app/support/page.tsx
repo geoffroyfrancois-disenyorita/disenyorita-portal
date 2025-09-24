@@ -1,9 +1,15 @@
 export const dynamic = "force-dynamic";
 
-import { api, Ticket } from "../../lib/api";
+import Link from "next/link";
+
+import { api, AutomationDigest, Ticket } from "../../lib/api";
 
 async function getTickets(): Promise<Ticket[]> {
   return api.supportTickets();
+}
+
+async function getAutomationDigest(): Promise<AutomationDigest> {
+  return api.automationDigest();
 }
 
 function priorityTone(priority: string): string {
@@ -18,7 +24,19 @@ function priorityTone(priority: string): string {
 }
 
 export default async function SupportPage(): Promise<JSX.Element> {
-  const tickets = await getTickets();
+  const [tickets, digest] = await Promise.all([getTickets(), getAutomationDigest()]);
+
+  const ticketActions = new Map<string, { label: string; url: string }>();
+  digest.tasks.forEach((task) => {
+    const ticketId = task.related_ids?.ticket_id;
+    if (!ticketId) {
+      return;
+    }
+    ticketActions.set(ticketId, {
+      label: task.action_label ?? "Open ticket",
+      url: task.action_url ?? "/support"
+    });
+  });
 
   return (
     <div>
@@ -33,6 +51,7 @@ export default async function SupportPage(): Promise<JSX.Element> {
             <th>Status</th>
             <th>Priority</th>
             <th>Assignee</th>
+            <th>Quick action</th>
           </tr>
         </thead>
         <tbody>
@@ -46,6 +65,18 @@ export default async function SupportPage(): Promise<JSX.Element> {
                 </span>
               </td>
               <td>{ticket.assignee_id ?? "Unassigned"}</td>
+              <td>
+                {ticketActions.has(ticket.id) ? (
+                  <Link
+                    href={ticketActions.get(ticket.id)!.url}
+                    style={{ color: "#38bdf8", textDecoration: "none", fontWeight: 600 }}
+                  >
+                    {ticketActions.get(ticket.id)!.label}
+                  </Link>
+                ) : (
+                  <span style={{ color: "#64748b" }}>—</span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
