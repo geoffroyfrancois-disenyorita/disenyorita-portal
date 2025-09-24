@@ -6,6 +6,8 @@ from pathlib import Path
 import sys
 from typing import ForwardRef, Iterable
 
+import pytest
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -28,7 +30,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services.data import store  # noqa: E402
 from app.services.project_templates import template_library, unregister_template  # noqa: E402
-from app.schemas.projects import ProjectTemplateType  # noqa: E402
+from app.schemas.projects import ProjectTemplateType, TaskStatus  # noqa: E402
 from app.schemas.clients import Client  # noqa: E402
 
 
@@ -263,3 +265,114 @@ def test_client_dashboard_links_related_entities() -> None:
 def test_client_dashboard_missing_client_returns_404() -> None:
     response = client.get("/api/v1/clients/non-existent/dashboard")
     assert response.status_code == 404
+
+
+def test_update_client_allows_editing_contacts_and_documents() -> None:
+    seeded_client = _seeded_client_with_data()
+    original_snapshot = seeded_client.copy(deep=True)
+
+    existing_contact = seeded_client.contacts[0]
+    existing_document = seeded_client.documents[0]
+    existing_interaction = seeded_client.interactions[0]
+
+    payload = {
+        "segment": "vip",
+        "preferred_channel": "portal",
+        "contacts": [
+            {
+                "id": existing_contact.id,
+                "phone": "+1-202-555-0101",
+            },
+            {
+                "first_name": "Zoe",
+                "last_name": "Rivera",
+                "email": "zoe@sunsetboutique.example",
+                "title": "Marketing Lead",
+            },
+        ],
+        "interactions": [
+            {
+                "id": existing_interaction.id,
+                "summary": "Followed up on launch blockers and confirmed resolution.",
+            },
+            {
+                "channel": "email",
+                "subject": "July campaign planning",
+                "summary": "Aligned on creative deliverables for the summer push.",
+                "occurred_at": datetime.utcnow().isoformat(),
+                "owner_id": "acct-99",
+            },
+        ],
+        "documents": [
+            {
+                "id": existing_document.id,
+                "version": "1.1",
+                "signed": True,
+            },
+            {
+                "name": "2024 Scope Expansion",
+                "url": "https://files.example/scope-expansion.pdf",
+                "uploaded_by": "pm-1",
+            },
+        ],
+    }
+
+    response = client.patch(f"/api/v1/clients/{seeded_client.id}", json=payload)
+    assert response.status_code == 200
+
+    body = response.json()
+    assert body["segment"] == "vip"
+    assert body["preferred_channel"] == "portal"
+    assert len(body["contacts"]) == 2
+
+    contact_lookup = {contact["id"]: contact for contact in body["contacts"]}
+    assert contact_lookup[existing_contact.id]["phone"] == "+1-202-555-0101"
+    new_contact = next(contact for contact in body["contacts"] if contact["id"] != existing_contact.id)
+    assert new_contact["email"] == "zoe@sunsetboutique.example"
+
+    assert len(body["interactions"]) == 2
+    newest_interaction = max(body["interactions"], key=lambda item: item["occurred_at"])
+    assert newest_interaction["subject"] == "July campaign planning"
+
+    document_lookup = {doc["id"]: doc for doc in body["documents"]}
+    assert document_lookup[existing_document.id]["version"] == "1.1"
+    assert document_lookup[existing_document.id]["signed"] is True
+    assert any(doc["name"] == "2024 Scope Expansion" for doc in body["documents"])
+
+    try:
+        stored_client = store.clients[seeded_client.id]
+        assert stored_client.segment.value == "vip"
+        assert len(stored_client.contacts) == 2
+    finally:
+        store.clients[seeded_client.id] = original_snapshot
+
+
+def test_client_engagements_surface_portfolio_health() -> None:
+    seeded_client = _seeded_client_with_data()
+
+    response = client.get("/api/v1/clients/engagements")
+    assert response.status_code == 200
+
+    body = response.json()
+    engagement = next(item for item in body if item["client_id"] == seeded_client.id)
+    assert engagement["organization_name"] == seeded_client.organization_name
+    assert engagement["active_projects"] >= 1
+    assert engagement["health"] in {"on_track", "at_risk", "needs_attention", "no_active_work"}
+    if engagement["next_milestone"]:
+        assert "due_date" in engagement["next_milestone"]
+
+
+def test_project_portfolio_reports_progress() -> None:
+    portfolio_response = client.get("/api/v1/projects/portfolio")
+    assert portfolio_response.status_code == 200
+
+    portfolio = portfolio_response.json()
+    assert len(portfolio) == len(store.projects)
+
+    project = next(iter(store.projects.values()))
+    record = next(item for item in portfolio if item["project_id"] == project.id)
+    assert record["total_tasks"] == len(project.tasks)
+    completed = sum(1 for task in project.tasks if task.status == TaskStatus.DONE)
+    assert record["completed_tasks"] == completed
+    expected_progress = (completed / len(project.tasks) * 100.0) if project.tasks else 0.0
+    assert record["progress"] == pytest.approx(expected_progress)

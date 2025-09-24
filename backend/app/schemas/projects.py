@@ -119,3 +119,26 @@ class ProjectUpdateRequest(BaseModel):
     template_id: Optional[str] = None
     tasks: Optional[List[TaskUpdate]] = None
     milestones: Optional[List[MilestoneUpdate]] = None
+
+
+class ProjectHealth(str, Enum):
+    ON_TRACK = "on_track"
+    AT_RISK = "at_risk"
+    BLOCKED = "blocked"
+    COMPLETED = "completed"
+
+
+class ProjectProgress(BaseModel):
+    project_id: str
+    code: str
+    name: str
+    status: ProjectStatus
+    client_id: str
+    client_name: Optional[str] = None
+    total_tasks: int
+    completed_tasks: int
+    late_tasks: int
+    progress: float
+    next_milestone: Optional[Milestone] = None
+    health: ProjectHealth
+    updated_at: datetime

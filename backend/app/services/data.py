@@ -7,6 +7,7 @@ from ..schemas.clients import (
     Client,
     ClientCreateRequest,
     ClientDashboard,
+    ClientEngagement,
     ClientFinancialSnapshot,
     ClientInvoiceDigest,
     ClientPaymentDigest,
@@ -15,17 +16,23 @@ from ..schemas.clients import (
     ClientSummary,
     ClientSupportSnapshot,
     ClientTicketDigest,
+    ClientUpdateRequest,
     ClientWithProjects,
     Contact,
+    ContactUpdate,
     Document,
+    DocumentUpdate,
     Industry,
     Interaction,
     InteractionChannel,
+    InteractionUpdate,
 )
 from ..schemas.projects import (
     Milestone,
     MilestoneUpdate,
     Project,
+    ProjectHealth,
+    ProjectProgress,
     ProjectStatus,
     ProjectSummary,
     ProjectTemplateType,
@@ -368,6 +375,108 @@ class InMemoryStore:
 
         return ClientWithProjects(client=client, projects=created_projects)
 
+    def update_client(self, client_id: str, payload: ClientUpdateRequest) -> Client:
+        client = self.clients.get(client_id)
+        if not client:
+            raise ValueError("Client not found")
+
+        now = datetime.utcnow()
+        update_fields = payload.dict(
+            exclude_unset=True,
+            exclude={"contacts", "interactions", "documents"},
+        )
+
+        if payload.contacts is not None:
+            existing_contacts: Dict[str, Contact] = {contact.id: contact for contact in client.contacts}
+            contacts: List[Contact] = []
+            for contact_update in payload.contacts:
+                if contact_update.id and contact_update.id in existing_contacts:
+                    base = existing_contacts[contact_update.id]
+                    update_data = contact_update.dict(exclude_unset=True)
+                    update_data.pop("id", None)
+                    update_data["updated_at"] = now
+                    contacts.append(base.copy(update=update_data))
+                else:
+                    if (
+                        contact_update.first_name is None
+                        or contact_update.last_name is None
+                        or contact_update.email is None
+                    ):
+                        raise ValueError(
+                            "New contacts require first_name, last_name, and email"
+                        )
+                    contacts.append(
+                        Contact(
+                            first_name=contact_update.first_name,
+                            last_name=contact_update.last_name,
+                            email=contact_update.email,
+                            phone=contact_update.phone,
+                            title=contact_update.title,
+                        )
+                    )
+            update_fields["contacts"] = contacts
+
+        if payload.interactions is not None:
+            existing_interactions: Dict[str, Interaction] = {
+                interaction.id: interaction for interaction in client.interactions
+            }
+            interactions: List[Interaction] = []
+            for interaction_update in payload.interactions:
+                if interaction_update.id and interaction_update.id in existing_interactions:
+                    base = existing_interactions[interaction_update.id]
+                    update_data = interaction_update.dict(exclude_unset=True)
+                    update_data.pop("id", None)
+                    update_data["updated_at"] = now
+                    interactions.append(base.copy(update=update_data))
+                else:
+                    if (
+                        interaction_update.channel is None
+                        or interaction_update.subject is None
+                        or interaction_update.summary is None
+                        or interaction_update.occurred_at is None
+                    ):
+                        raise ValueError(
+                            "New interactions require channel, subject, summary, and occurred_at"
+                        )
+                    interactions.append(
+                        Interaction(
+                            channel=interaction_update.channel,
+                            subject=interaction_update.subject,
+                            summary=interaction_update.summary,
+                            occurred_at=interaction_update.occurred_at,
+                            owner_id=interaction_update.owner_id,
+                        )
+                    )
+            interactions.sort(key=lambda entry: entry.occurred_at, reverse=True)
+            update_fields["interactions"] = interactions
+
+        if payload.documents is not None:
+            existing_documents: Dict[str, Document] = {
+                document.id: document for document in client.documents
+            }
+            documents: List[Document] = []
+            for document_update in payload.documents:
+                if document_update.id and document_update.id in existing_documents:
+                    base = existing_documents[document_update.id]
+                    update_data = document_update.dict(exclude_unset=True)
+                    update_data.pop("id", None)
+                    update_data["updated_at"] = now
+                    documents.append(base.copy(update=update_data))
+                else:
+                    doc_payload = document_update.dict(exclude_unset=True)
+                    for field in ("name", "url", "uploaded_by"):
+                        if field not in doc_payload:
+                            raise ValueError(
+                                "New documents require name, url, and uploaded_by"
+                            )
+                    documents.append(Document(**doc_payload))
+            update_fields["documents"] = documents
+
+        update_fields["updated_at"] = now
+        updated_client = client.copy(update=update_fields)
+        self.clients[client_id] = updated_client
+        return updated_client
+
     def update_project(self, project_id: str, payload: ProjectUpdateRequest) -> Project:
         project = self.projects.get(project_id)
         if not project:
@@ -610,6 +719,56 @@ class InMemoryStore:
             support=support_snapshot,
         )
 
+    def project_portfolio(self) -> List[ProjectProgress]:
+        now = datetime.utcnow()
+        portfolio: List[ProjectProgress] = []
+        for project in self.projects.values():
+            total_tasks = len(project.tasks)
+            completed_tasks = sum(1 for task in project.tasks if task.status == TaskStatus.DONE)
+            late_tasks = sum(
+                1
+                for task in project.tasks
+                if task.due_date and task.due_date < now and task.status != TaskStatus.DONE
+            )
+            progress = (completed_tasks / total_tasks * 100.0) if total_tasks else 0.0
+            upcoming_milestones = sorted(
+                (milestone for milestone in project.milestones if not milestone.completed),
+                key=lambda milestone: milestone.due_date,
+            )
+            next_milestone = upcoming_milestones[0] if upcoming_milestones else None
+            client_name = (
+                self.clients[project.client_id].organization_name
+                if project.client_id in self.clients
+                else None
+            )
+            if project.status == ProjectStatus.COMPLETED:
+                health = ProjectHealth.COMPLETED
+            elif project.status == ProjectStatus.ON_HOLD:
+                health = ProjectHealth.BLOCKED
+            elif late_tasks > 0:
+                health = ProjectHealth.AT_RISK
+            else:
+                health = ProjectHealth.ON_TRACK
+            portfolio.append(
+                ProjectProgress(
+                    project_id=project.id,
+                    code=project.code,
+                    name=project.name,
+                    status=project.status,
+                    client_id=project.client_id,
+                    client_name=client_name,
+                    total_tasks=total_tasks,
+                    completed_tasks=completed_tasks,
+                    late_tasks=late_tasks,
+                    progress=progress,
+                    next_milestone=next_milestone,
+                    health=health,
+                    updated_at=project.updated_at,
+                )
+            )
+        portfolio.sort(key=lambda record: record.updated_at, reverse=True)
+        return portfolio
+
     def project_summary(self) -> ProjectSummary:
         by_status: Dict[str, int] = {status.value: 0 for status in ProjectStatus}
         overdue_tasks = 0
@@ -636,6 +795,89 @@ class InMemoryStore:
             by_segment=by_segment,
             active_portal_users=sum(1 for client in self.clients.values() if client.preferred_channel == InteractionChannel.PORTAL),
         )
+
+    def client_engagements(self) -> List[ClientEngagement]:
+        now = datetime.utcnow()
+        engagements: List[ClientEngagement] = []
+        for client in self.clients.values():
+            client_projects = [
+                project for project in self.projects.values() if project.client_id == client.id
+            ]
+            active_projects = [
+                project
+                for project in client_projects
+                if project.status not in {ProjectStatus.COMPLETED, ProjectStatus.CANCELLED}
+            ]
+            late_projects = [
+                project
+                for project in active_projects
+                if any(
+                    task.due_date and task.due_date < now and task.status != TaskStatus.DONE
+                    for task in project.tasks
+                )
+            ]
+            upcoming_milestones = sorted(
+                (
+                    milestone
+                    for project in active_projects
+                    for milestone in project.milestones
+                    if not milestone.completed
+                ),
+                key=lambda milestone: milestone.due_date,
+            )
+            next_milestone = upcoming_milestones[0] if upcoming_milestones else None
+
+            outstanding_balance = 0.0
+            for invoice in self.invoices.values():
+                if invoice.client_id != client.id:
+                    continue
+                invoice_total = sum(item.total for item in invoice.items) if invoice.items else 0.0
+                payments_total = sum(
+                    payment.amount for payment in self.payments.values() if payment.invoice_id == invoice.id
+                )
+                outstanding_balance += max(invoice_total - payments_total, 0.0)
+
+            last_interaction_at = max(
+                (interaction.occurred_at for interaction in client.interactions),
+                default=None,
+            )
+            interaction_gap_days = (
+                (now - last_interaction_at).days if last_interaction_at else None
+            )
+
+            has_on_hold = any(project.status == ProjectStatus.ON_HOLD for project in active_projects)
+            needs_attention = has_on_hold or len(late_projects) >= 2 or outstanding_balance > 15000
+            at_risk = (
+                len(late_projects) > 0
+                or outstanding_balance > 0
+                or (interaction_gap_days is not None and interaction_gap_days > 30)
+            )
+
+            if not active_projects and outstanding_balance <= 0:
+                health = "no_active_work"
+            elif needs_attention:
+                health = "needs_attention"
+            elif at_risk:
+                health = "at_risk"
+            else:
+                health = "on_track"
+
+            engagements.append(
+                ClientEngagement(
+                    client_id=client.id,
+                    organization_name=client.organization_name,
+                    segment=client.segment,
+                    active_projects=len(active_projects),
+                    late_projects=len(late_projects),
+                    outstanding_balance=outstanding_balance,
+                    next_milestone=next_milestone,
+                    last_interaction_at=last_interaction_at,
+                    health=health,
+                )
+            )
+
+        engagements.sort(key=lambda entry: entry.organization_name.lower())
+        return engagements
 
     def financial_summary(self) -> FinancialSummary:
         outstanding = 0.0
