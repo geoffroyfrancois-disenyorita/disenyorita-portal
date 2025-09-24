@@ -69,7 +69,7 @@ export default async function SupportPage(): Promise<JSX.Element> {
                 {ticketActions.has(ticket.id) ? (
                   <Link
                     href={ticketActions.get(ticket.id)!.url}
-                    style={{ color: "#38bdf8", textDecoration: "none", fontWeight: 600 }}
+                    style={{ color: "#6366f1", textDecoration: "none", fontWeight: 600 }}
                   >
                     {ticketActions.get(ticket.id)!.label}
                   </Link>

@@ -92,9 +92,9 @@ function EntryList({
             style={{
               padding: "0.75rem",
               borderRadius: "0.75rem",
-              border: "1px solid rgba(148,163,184,0.2)",
-              background: "rgba(15,23,42,0.6)",
-              color: "#e2e8f0"
+              border: "1px solid rgba(148,163,184,0.45)",
+              background: "rgba(255,255,255,0.9)",
+              color: "#1f2937"
             }}
           />
           <input
@@ -105,9 +105,9 @@ function EntryList({
             style={{
               padding: "0.75rem",
               borderRadius: "0.75rem",
-              border: "1px solid rgba(148,163,184,0.2)",
-              background: "rgba(15,23,42,0.6)",
-              color: "#e2e8f0"
+              border: "1px solid rgba(148,163,184,0.45)",
+              background: "rgba(255,255,255,0.9)",
+              color: "#1f2937"
             }}
           />
           <button
@@ -117,7 +117,7 @@ function EntryList({
             style={{
               border: "none",
               background: "transparent",
-              color: "#94a3b8",
+              color: "#cbd5f5",
               fontSize: "1.25rem",
               cursor: "pointer"
             }}
@@ -132,9 +132,9 @@ function EntryList({
         style={{
           padding: "0.75rem 1rem",
           borderRadius: "0.75rem",
-          border: "1px solid rgba(56,189,248,0.4)",
-          background: "transparent",
-          color: "#38bdf8",
+          border: "1px solid rgba(129,140,248,0.4)",
+          background: "rgba(255,255,255,0.6)",
+          color: "#6366f1",
           fontWeight: 600,
           cursor: "pointer"
         }}
@@ -268,7 +268,7 @@ export default function TaxCalculatorPage(): JSX.Element {
 
   return (
     <div>
-      <Link href="/financials" style={{ color: "#38bdf8", textDecoration: "none", fontWeight: 600 }}>
+      <Link href="/financials" style={{ color: "#6366f1", textDecoration: "none", fontWeight: 600 }}>
         ← Back to financial control
       </Link>
       <h2 className="section-title" style={{ marginTop: "1.5rem" }}>
@@ -345,9 +345,9 @@ export default function TaxCalculatorPage(): JSX.Element {
               style={{
                 padding: "0.75rem",
                 borderRadius: "0.75rem",
-                border: "1px solid rgba(148,163,184,0.2)",
-                background: "rgba(15,23,42,0.6)",
-                color: "#e2e8f0"
+                border: "1px solid rgba(148,163,184,0.45)",
+                background: "rgba(255,255,255,0.9)",
+                color: "#1f2937"
               }}
             >
               <option value={1}>1% (CREATE relief for MSMEs)</option>
@@ -368,15 +368,18 @@ export default function TaxCalculatorPage(): JSX.Element {
             padding: "0.85rem 1.5rem",
             borderRadius: "0.75rem",
             border: "none",
-            background: loading ? "rgba(148,163,184,0.4)" : "#38bdf8",
-            color: loading ? "#0f172a" : "#0f172a",
+            background: loading
+              ? "rgba(203, 213, 225, 0.7)"
+              : "linear-gradient(135deg, #a5b4fc, #fbcfe8)",
+            color: loading ? "#475569" : "#312e81",
             fontWeight: 700,
-            cursor: loading ? "not-allowed" : "pointer"
+            cursor: loading ? "not-allowed" : "pointer",
+            boxShadow: loading ? "none" : "0 16px 32px rgba(165, 180, 252, 0.35)"
           }}
         >
           {loading ? "Calculating…" : "Recalculate tax obligations"}
         </button>
-        {error && <p style={{ color: "#f87171", margin: 0 }}>{error}</p>}
+        {error && <p style={{ color: "#fb7185", margin: 0 }}>{error}</p>}
       </div>
 
       <div className="card" style={{ marginTop: "2.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -388,11 +391,11 @@ export default function TaxCalculatorPage(): JSX.Element {
           </div>
           <div>
             <p className="text-muted" style={{ margin: 0 }}>Total expenses</p>
-            <p style={{ fontSize: "1.4rem", margin: "0.25rem 0", color: "#f97316" }}>{formatCurrency(totalExpenses)}</p>
+            <p style={{ fontSize: "1.4rem", margin: "0.25rem 0", color: "#fb7185" }}>{formatCurrency(totalExpenses)}</p>
           </div>
           <div>
             <p className="text-muted" style={{ margin: 0 }}>Allowable deductions</p>
-            <p style={{ fontSize: "1.4rem", margin: "0.25rem 0", color: "#facc15" }}>{formatCurrency(totalDeductions)}</p>
+            <p style={{ fontSize: "1.4rem", margin: "0.25rem 0", color: "#fcd34d" }}>{formatCurrency(totalDeductions)}</p>
           </div>
           <div>
             <p className="text-muted" style={{ margin: 0 }}>Projected taxable income</p>
@@ -409,25 +412,25 @@ export default function TaxCalculatorPage(): JSX.Element {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
             <div>
               <p className="text-muted" style={{ margin: 0 }}>Income tax</p>
-              <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#f97316" }}>
+              <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#fb7185" }}>
                 {formatCurrency(calculation.income_tax)}
               </p>
             </div>
             <div>
               <p className="text-muted" style={{ margin: 0 }}>Percentage tax</p>
-              <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#facc15" }}>
+              <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#fcd34d" }}>
                 {formatCurrency(calculation.percentage_tax)}
               </p>
             </div>
             <div>
               <p className="text-muted" style={{ margin: 0 }}>VAT due</p>
-              <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#38bdf8" }}>
+              <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#60a5fa" }}>
                 {formatCurrency(calculation.vat_due)}
               </p>
             </div>
             <div>
               <p className="text-muted" style={{ margin: 0 }}>Total estimated tax</p>
-              <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#f87171" }}>
+              <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#fb7185" }}>
                 {formatCurrency(calculation.total_tax)}
               </p>
             </div>
@@ -455,7 +458,7 @@ export default function TaxCalculatorPage(): JSX.Element {
                 <strong style={{ textTransform: "uppercase", letterSpacing: "0.05em", fontSize: "0.75rem" }}>
                   {tip.category}
                 </strong>
-                <p style={{ margin: "0.25rem 0 0", color: "#cbd5f5" }}>{tip.message}</p>
+                <p style={{ margin: "0.25rem 0 0", color: "#64748b" }}>{tip.message}</p>
               </li>
             ))}
           </ul>
