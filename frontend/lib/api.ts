@@ -24,6 +24,13 @@ export const api = {
   dashboard: () => request<DashboardSnapshot>("/dashboard"),
   projects: () => request<Project[]>("/projects"),
   clients: () => request<Client[]>("/clients"),
+  client: (clientId: string) => request<Client>(`/clients/${clientId}`),
+  clientDashboard: (clientId: string) => request<ClientDashboard>(`/clients/${clientId}/dashboard`),
+  createClient: (payload: ClientCreateRequest) =>
+    request<ClientWithProjects>("/clients", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   invoices: () => request<Invoice[]>("/financials/invoices"),
   financialOverview: () => request<MacroFinancials>("/financials/overview"),
   projectFinancials: () => request<ProjectFinancials[]>("/financials/projects"),
@@ -108,14 +115,147 @@ export interface Task {
   logged_hours: number;
 }
 
-export interface Client {
+export type Industry = "hospitality" | "creative" | "technology" | "other";
+
+export type ClientSegment = "retainer" | "project" | "vip" | "prospect";
+
+export type InteractionChannel = "email" | "portal" | "social" | "phone";
+
+export interface TimestampedEntity {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+}
+
+export interface ContactInput {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string | null;
+  title?: string | null;
+}
+
+export interface Contact extends TimestampedEntity, ContactInput {}
+
+export interface Interaction extends TimestampedEntity {
+  channel: InteractionChannel;
+  subject: string;
+  summary: string;
+  occurred_at: string;
+  owner_id?: string | null;
+}
+
+export interface ClientDocument extends TimestampedEntity {
+  name: string;
+  url: string;
+  version: string;
+  uploaded_by: string;
+  signed: boolean;
+}
+
+export interface Client extends TimestampedEntity {
   id: string;
   organization_name: string;
-  industry: string;
-  segment: string;
+  industry: Industry;
+  segment: ClientSegment;
   billing_email: string;
-  preferred_channel: string;
+  preferred_channel: InteractionChannel;
   timezone: string;
+  contacts?: Contact[];
+  interactions?: Interaction[];
+  documents?: ClientDocument[];
+}
+
+export interface ClientProjectDigest {
+  id: string;
+  code: string;
+  name: string;
+  project_type: string;
+  status: string;
+  start_date: string;
+  end_date?: string | null;
+  manager_id: string;
+  budget?: number | null;
+  currency: string;
+  late_tasks: Task[];
+  next_task?: Task | null;
+  next_milestone?: Milestone | null;
+}
+
+export interface ClientInvoiceDigest {
+  id: string;
+  number: string;
+  status: string;
+  due_date: string;
+  total: number;
+  balance_due: number;
+  currency: string;
+  project_id?: string | null;
+  project_name?: string | null;
+}
+
+export interface ClientPaymentDigest {
+  id: string;
+  invoice_id: string;
+  invoice_number?: string | null;
+  amount: number;
+  received_at: string;
+  method: string;
+}
+
+export interface ClientFinancialSnapshot {
+  outstanding_invoices: ClientInvoiceDigest[];
+  next_invoice_due?: ClientInvoiceDigest | null;
+  recent_payments: ClientPaymentDigest[];
+  total_outstanding: number;
+}
+
+export interface ClientTicketDigest {
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  sla_due?: string | null;
+  last_activity_at?: string | null;
+}
+
+export interface ClientSupportSnapshot {
+  open_tickets: ClientTicketDigest[];
+  last_ticket_update?: string | null;
+}
+
+export interface ClientDashboard {
+  client: Client;
+  projects: ClientProjectDigest[];
+  financials: ClientFinancialSnapshot;
+  support: ClientSupportSnapshot;
+}
+
+export interface ProjectSetup {
+  name: string;
+  project_type: string;
+  start_date: string;
+  manager_id: string;
+  budget: number;
+  currency: string;
+  start_after?: string | null;
+}
+
+export interface ClientCreateRequest {
+  organization_name: string;
+  industry: Industry;
+  segment: ClientSegment;
+  billing_email: string;
+  preferred_channel: InteractionChannel;
+  timezone: string;
+  contacts: ContactInput[];
+  projects: ProjectSetup[];
+}
+
+export interface ClientWithProjects {
+  client: Client;
+  projects: Project[];
 }
 
 export interface Invoice {
