@@ -22,6 +22,14 @@ class TaskStatus(str, Enum):
     DONE = "done"
 
 
+class TaskType(str, Enum):
+    FEATURE = "feature"
+    BUG = "bug"
+    CHORE = "chore"
+    RESEARCH = "research"
+    QA = "qa"
+
+
 class ProjectTemplateType(str, Enum):
     WEBSITE = "website"
     BRANDING = "branding"
@@ -31,7 +39,10 @@ class ProjectTemplateType(str, Enum):
 class Task(IdentifiedModel):
     name: str
     status: TaskStatus = TaskStatus.TODO
+    type: TaskType = TaskType.FEATURE
     assignee_id: Optional[str] = None
+    leader_id: Optional[str] = None
+    start_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     billable: bool = True
     estimated_hours: Optional[float] = None
@@ -74,3 +85,37 @@ class ProjectSummary(BaseModel):
     by_status: dict
     billable_hours: float
     overdue_tasks: int
+
+
+class TaskUpdate(BaseModel):
+    id: str
+    name: Optional[str] = None
+    status: Optional[TaskStatus] = None
+    type: Optional[TaskType] = None
+    assignee_id: Optional[str] = None
+    leader_id: Optional[str] = None
+    start_date: Optional[datetime] = None
+    due_date: Optional[datetime] = None
+    billable: Optional[bool] = None
+    estimated_hours: Optional[float] = None
+    logged_hours: Optional[float] = None
+    dependencies: Optional[List[str]] = None
+
+
+class MilestoneUpdate(BaseModel):
+    id: str
+    title: Optional[str] = None
+    due_date: Optional[datetime] = None
+    completed: Optional[bool] = None
+
+
+class ProjectUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    status: Optional[ProjectStatus] = None
+    manager_id: Optional[str] = None
+    start_date: Optional[datetime] = None
+    budget: Optional[float] = None
+    currency: Optional[str] = None
+    template_id: Optional[str] = None
+    tasks: Optional[List[TaskUpdate]] = None
+    milestones: Optional[List[MilestoneUpdate]] = None
