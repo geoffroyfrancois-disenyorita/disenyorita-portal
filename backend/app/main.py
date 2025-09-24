@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .core.background import automation_scheduler
 from .core.config import get_settings
 from .api.routes import (
     auth,
@@ -49,3 +50,13 @@ def root() -> dict:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.on_event("startup")
+async def startup_tasks() -> None:
+    await automation_scheduler.start()
+
+
+@app.on_event("shutdown")
+async def shutdown_tasks() -> None:
+    await automation_scheduler.stop()

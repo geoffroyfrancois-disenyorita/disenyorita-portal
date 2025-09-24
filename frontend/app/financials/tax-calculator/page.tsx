@@ -9,7 +9,8 @@ import {
   DeductionOpportunity,
   TaxComputationPayload,
   TaxComputationResult,
-  TaxEntryInput
+  TaxEntryInput,
+  TaxProfile
 } from "../../../lib/api";
 
 type Entry = TaxEntryInput & { id: string };
@@ -155,6 +156,42 @@ export default function TaxCalculatorPage(): JSX.Element {
   const [calculation, setCalculation] = useState<TaxComputationResult | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [profileMetadata, setProfileMetadata] = useState<TaxProfile | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const snapshot = await api.taxProfile();
+        if (!active) {
+          return;
+        }
+        const withIds = (entries: TaxEntryInput[]): Entry[] => entries.map((entry) => ({ ...entry, id: generateId() }));
+        if (snapshot.incomes.length > 0) {
+          setIncomes(withIds(snapshot.incomes));
+        }
+        if (snapshot.cost_of_sales.length > 0) {
+          setCostOfSales(withIds(snapshot.cost_of_sales));
+        }
+        if (snapshot.operating_expenses.length > 0) {
+          setOperatingExpenses(withIds(snapshot.operating_expenses));
+        }
+        if (snapshot.other_deductions.length > 0) {
+          setOtherDeductions(withIds(snapshot.other_deductions));
+        }
+        setApplyPercentageTax(snapshot.apply_percentage_tax);
+        setPercentageTaxRate(snapshot.percentage_tax_rate);
+        setVatRegistered(snapshot.vat_registered);
+        setCalculation(snapshot.computed);
+        setProfileMetadata(snapshot);
+      } catch (thrown) {
+        console.error(thrown);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const totalIncome = useMemo(() => incomes.reduce((sum, entry) => sum + (Number.isFinite(entry.amount) ? entry.amount : 0), 0), [incomes]);
   const totalExpenses = useMemo(
@@ -241,6 +278,15 @@ export default function TaxCalculatorPage(): JSX.Element {
         Capture every peso of revenue, expenses, and allowable deductions to automate Philippine income tax, percentage tax,
         and VAT projections. Use the planner to stay compliant with TRAIN law while maximizing cash for growth.
       </p>
+      {profileMetadata && (
+        <p className="text-muted" style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
+          Last synced {new Date(profileMetadata.last_updated).toLocaleString()} from {profileMetadata.source_summary.invoices}
+          {" "}
+          invoices, {profileMetadata.source_summary.expenses} expenses, and
+          {" "}
+          {profileMetadata.source_summary.statutory_records} statutory records.
+        </p>
+      )}
 
       <div className="grid-two" style={{ marginTop: "2rem", gap: "1.5rem" }}>
         <EntryList

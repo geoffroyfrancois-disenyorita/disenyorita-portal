@@ -40,6 +40,8 @@ class AutomationTask(IdentifiedModel):
     suggested_assignee: Optional[str] = None
     details: Optional[str] = None
     related_ids: Dict[str, str] = Field(default_factory=dict)
+    action_label: Optional[str] = None
+    action_url: Optional[str] = None
 
 
 class AutomationDigest(IdentifiedModel):

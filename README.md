@@ -36,6 +36,9 @@ The repository currently contains only a placeholder README, so the project will
 - Expense capture, receipt OCR, project profitability, revenue forecasting.
 - Sync with accounting systems (QuickBooks/Xero via webhooks & polling).
 - Payment gateway integration (Stripe, PayPal) with PCI compliance delegation.
+- **Quarterly tax maintenance**: update the TRAIN-law bracket table (`PH_TAX_BRACKETS`) and percentage/VAT logic in
+  `backend/app/services/data.py` every quarter, then trigger a fresh automation digest snapshot to compare against archived
+  filings.
 
 ### 6. HR & Resource Management
 - Employee/contractor profiles, skills matrix, certifications, onboarding flows.

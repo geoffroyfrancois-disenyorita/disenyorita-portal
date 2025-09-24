@@ -42,6 +42,7 @@ from ..schemas.projects import (
     TaskType,
     TaskUpdate,
 )
+from ..schemas.automation import AutomationDigest
 from ..schemas.financials import (
     Currency,
     DeductionOpportunity,
@@ -57,6 +58,7 @@ from ..schemas.financials import (
     TaxComputationRequest,
     TaxComputationResponse,
     TaxEntry,
+    TaxProfile,
 )
 from ..schemas.support import Channel, KnowledgeArticle, Message, SupportSummary, Ticket, TicketStatus
 from ..schemas.hr import Employee, EmploymentType, ResourceCapacity, Skill, TimeOffRequest, TimeOffStatus
@@ -100,6 +102,23 @@ class InMemoryStore:
         self.sites: Dict[str, Site] = {}
         self.checks: Dict[str, Check] = {}
         self.alerts: Dict[str, Alert] = {}
+        self.automation_digests: List[AutomationDigest] = []
+        self.automation_broadcasts: List[str] = []
+        self.operating_expense_baselines: Dict[str, float] = {
+            "Studio rent": 180_000.0,
+            "Team salaries": 780_000.0,
+            "Utilities & internet": 54_000.0,
+        }
+        self.statutory_contributions: Dict[str, float] = {
+            "SSS": 24_000.0,
+            "PhilHealth": 36_000.0,
+        }
+        self.tax_configuration: Dict[str, float | bool] = {
+            "apply_percentage_tax": True,
+            "percentage_tax_rate": 3.0,
+            "vat_registered": False,
+        }
+        self._tax_profile_updated_at = now
 
         # Seed clients
         disenyorita_client = Client(
@@ -121,7 +140,14 @@ class InMemoryStore:
                 )
             ],
             documents=[
-                Document(name="2024 Retainer", url="https://files.example/retainer.pdf", uploaded_by="system", signed=True)
+                Document(
+                    name="2024 Retainer",
+                    url="https://files.example/retainer.pdf",
+                    uploaded_by="system",
+                    signed=True,
+                    created_at=now - timedelta(days=320),
+                    updated_at=now - timedelta(days=300),
+                )
             ],
         )
         isla_client = Client(
@@ -252,6 +278,16 @@ class InMemoryStore:
         self.campaigns[campaign.id] = campaign
         content = ContentItem(campaign_id=campaign.id, title="Instagram Reel", status=ContentStatus.SCHEDULED, scheduled_for=now + timedelta(days=1), platform="instagram")
         self.content_items[content.id] = content
+        pending_content = ContentItem(
+            campaign_id=campaign.id,
+            title="Hotel audit checklist blog",
+            status=ContentStatus.DRAFT,
+            scheduled_for=now + timedelta(days=5),
+            platform="blog",
+            created_at=now - timedelta(days=6),
+            updated_at=now - timedelta(days=6),
+        )
+        self.content_items[pending_content.id] = pending_content
         metric = MetricSnapshot(content_id=None, impressions=15000, clicks=1200, conversions=85, spend=450)
         self.metrics[metric.id] = metric
 
@@ -262,6 +298,14 @@ class InMemoryStore:
         self.checks[check.id] = check
         alert = Alert(site_id=site.id, message="SSL certificate expires in 7 days", severity="warning", triggered_at=now - timedelta(hours=3))
         self.alerts[alert.id] = alert
+        compliance_check = Check(
+            site_id=site.id,
+            type="soc_audit",
+            status="pending",
+            last_run=now - timedelta(days=62),
+            last_response_time_ms=None,
+        )
+        self.checks[compliance_check.id] = compliance_check
 
     def _generate_project_code(self, template_id: str) -> str:
         prefix = template_library.code_prefix(template_id)
@@ -943,6 +987,89 @@ class InMemoryStore:
             total_outstanding=total_outstanding,
             total_expenses=total_expenses,
             net_cash_flow=total_collected - total_expenses,
+        )
+
+    def archive_automation_digest(self, digest: AutomationDigest) -> None:
+        self.automation_digests.append(digest)
+        # Keep roughly the last ten months of daily snapshots
+        self.automation_digests = self.automation_digests[-300:]
+
+    def automation_digest_history(self) -> List[AutomationDigest]:
+        return list(self.automation_digests)
+
+    def record_automation_broadcast(self, digest: AutomationDigest) -> None:
+        summary = f"{digest.generated_at.isoformat()}|tasks={len(digest.tasks)}"
+        self.automation_broadcasts.append(summary)
+        self.automation_broadcasts = self.automation_broadcasts[-120:]
+
+    def tax_profile(self) -> TaxProfile:
+        exchange_rate = 56.0
+
+        def to_php(amount: float, currency: Currency) -> float:
+            if currency == Currency.USD:
+                return round(amount * exchange_rate, 2)
+            return round(amount, 2)
+
+        revenue_by_client: Dict[str, float] = {}
+        for invoice in self.invoices.values():
+            total = sum(item.total for item in invoice.items) if invoice.items else 0.0
+            client_name = self.clients[invoice.client_id].organization_name if invoice.client_id in self.clients else "Client"
+            revenue_by_client[client_name] = revenue_by_client.get(client_name, 0.0) + to_php(total, invoice.currency)
+
+        incomes = [TaxEntry(label=f"{client} billings", amount=value) for client, value in revenue_by_client.items()]
+
+        delivery_costs: Dict[str, float] = {}
+        for expense in self.expenses.values():
+            delivery_costs[expense.category] = delivery_costs.get(expense.category, 0.0) + to_php(expense.amount, expense.currency)
+        cost_of_sales = [TaxEntry(label=label, amount=value) for label, value in delivery_costs.items()]
+
+        operating_expenses = [
+            TaxEntry(label=label, amount=amount)
+            for label, amount in self.operating_expense_baselines.items()
+        ]
+
+        other_deductions = [
+            TaxEntry(label=label, amount=amount)
+            for label, amount in self.statutory_contributions.items()
+        ]
+
+        payload = TaxComputationRequest(
+            incomes=incomes,
+            cost_of_sales=cost_of_sales,
+            operating_expenses=operating_expenses,
+            other_deductions=other_deductions,
+            apply_percentage_tax=bool(self.tax_configuration["apply_percentage_tax"]),
+            percentage_tax_rate=float(self.tax_configuration["percentage_tax_rate"]),
+            vat_registered=bool(self.tax_configuration["vat_registered"]),
+        )
+
+        computation = self.calculate_tax(payload)
+
+        timestamps = [
+            *[invoice.updated_at for invoice in self.invoices.values()],
+            *[expense.updated_at for expense in self.expenses.values()],
+        ]
+        if timestamps:
+            last_updated = max(timestamps)
+        else:
+            last_updated = datetime.utcnow()
+        self._tax_profile_updated_at = max(self._tax_profile_updated_at, last_updated)
+
+        return TaxProfile(
+            incomes=incomes,
+            cost_of_sales=cost_of_sales,
+            operating_expenses=operating_expenses,
+            other_deductions=other_deductions,
+            apply_percentage_tax=payload.apply_percentage_tax,
+            percentage_tax_rate=payload.percentage_tax_rate,
+            vat_registered=payload.vat_registered,
+            last_updated=self._tax_profile_updated_at,
+            source_summary={
+                "invoices": len(self.invoices),
+                "expenses": len(self.expenses),
+                "statutory_records": len(self.statutory_contributions),
+            },
+            computed=computation,
         )
 
     def _calculate_income_tax(self, taxable_income: float) -> float:

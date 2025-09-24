@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 
 import { MetricCard } from "../components/MetricCard";
-import { api, Invoice, MacroFinancials, PricingSuggestion, ProjectFinancials } from "../../lib/api";
+import { api, AutomationDigest, Invoice, MacroFinancials, PricingSuggestion, ProjectFinancials } from "../../lib/api";
 
 async function getInvoices(): Promise<Invoice[]> {
   return api.invoices();
@@ -19,6 +19,10 @@ async function getFinancialOverview(): Promise<MacroFinancials> {
 
 async function getPricingSuggestions(): Promise<PricingSuggestion[]> {
   return api.pricingSuggestions();
+}
+
+async function getAutomationDigest(): Promise<AutomationDigest> {
+  return api.automationDigest();
 }
 
 function statusTone(status: string): "default" | "success" | "warning" | "danger" {
@@ -44,12 +48,25 @@ function formatCurrency(value: number, currency = "USD"): string {
 }
 
 export default async function FinancialsPage(): Promise<JSX.Element> {
-  const [invoices, projectFinancials, overview, pricingSuggestions] = await Promise.all([
+  const [invoices, projectFinancials, overview, pricingSuggestions, digest] = await Promise.all([
     getInvoices(),
     getProjectFinancials(),
     getFinancialOverview(),
-    getPricingSuggestions()
+    getPricingSuggestions(),
+    getAutomationDigest()
   ]);
+
+  const reminderTasks = new Map<string, { label: string; url: string }>();
+  digest.tasks.forEach((task) => {
+    const invoiceId = task.related_ids?.invoice_id;
+    if (!invoiceId) {
+      return;
+    }
+    reminderTasks.set(invoiceId, {
+      label: task.action_label ?? "Open task",
+      url: task.action_url ?? "/financials"
+    });
+  });
 
   return (
     <div>
@@ -138,6 +155,7 @@ export default async function FinancialsPage(): Promise<JSX.Element> {
               <th>Issued</th>
               <th>Due</th>
               <th>Total</th>
+              <th>Quick action</th>
             </tr>
           </thead>
           <tbody>
@@ -153,6 +171,22 @@ export default async function FinancialsPage(): Promise<JSX.Element> {
                 <td>{new Date(invoice.issue_date).toLocaleDateString()}</td>
                 <td>{new Date(invoice.due_date).toLocaleDateString()}</td>
                 <td>{formatCurrency(invoice.items.reduce((acc, item) => acc + item.total, 0), invoice.currency)}</td>
+                <td>
+                  {reminderTasks.has(invoice.id) ? (
+                    <Link
+                      href={reminderTasks.get(invoice.id)!.url}
+                      style={{
+                        color: "#38bdf8",
+                        textDecoration: "none",
+                        fontWeight: 600
+                      }}
+                    >
+                      {reminderTasks.get(invoice.id)!.label}
+                    </Link>
+                  ) : (
+                    <span style={{ color: "#64748b" }}>—</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
