@@ -73,7 +73,7 @@ export async function AutomationPanel(): Promise<JSX.Element> {
             surface the next best actions across teams with deep links and suggested owners.
           </p>
         </div>
-        <Link href="/automation" style={{ color: "#38bdf8", fontWeight: 600 }}>
+        <Link href="/automation" style={{ color: "#6366f1", fontWeight: 600 }}>
           View full history →
         </Link>
       </div>
@@ -105,8 +105,8 @@ export async function AutomationPanel(): Promise<JSX.Element> {
                     </span>
                     <span style={{ fontWeight: 600 }}>{task.summary}</span>
                   </div>
-                  {task.details && <p style={{ margin: 0, color: "#cbd5f5" }}>{task.details}</p>}
-                  <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", fontSize: "0.85rem", color: "#94a3b8" }}>
+                  {task.details && <p style={{ margin: 0, color: "#64748b" }}>{task.details}</p>}
+                  <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", fontSize: "0.85rem", color: "#64748b" }}>
                     <span style={{ textTransform: "capitalize" }}>{task.category}</span>
                     {dueLabel && <span>{dueLabel}</span>}
                     {task.suggested_assignee && <span>Suggested: {task.suggested_assignee}</span>}
@@ -120,10 +120,11 @@ export async function AutomationPanel(): Promise<JSX.Element> {
                     gap: "0.5rem",
                     padding: "0.65rem 1rem",
                     borderRadius: "0.75rem",
-                    border: "1px solid rgba(56,189,248,0.4)",
-                    color: "#38bdf8",
+                    border: "1px solid rgba(129,140,248,0.4)",
+                    color: "#6366f1",
                     fontWeight: 600,
-                    textDecoration: "none"
+                    textDecoration: "none",
+                    background: "rgba(255,255,255,0.6)"
                   }}
                 >
                   {task.action_label ?? "Open module"}
