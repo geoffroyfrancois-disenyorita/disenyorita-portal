@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, Iterable, List, Optional
 
-from ..schemas.projects import Milestone, Task, TaskStatus
+from ..schemas.projects import Milestone, Task, TaskStatus, TaskType
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,8 @@ class TaskBlueprint:
     status: TaskStatus = TaskStatus.TODO
     estimated_hours: Optional[float] = None
     billable: bool = True
+    task_type: TaskType = TaskType.FEATURE
+    leader_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,9 @@ class ProjectTemplateLibrary:
     def unregister(self, template_id: str) -> None:
         self._templates.pop(template_id, None)
 
+    def definitions(self) -> Dict[str, ProjectTemplate]:
+        return {template_id: template for template_id, template in self._templates.items()}
+
     def exists(self, template_id: str) -> bool:
         return template_id in self._templates
 
@@ -78,8 +83,11 @@ class ProjectTemplateLibrary:
             task = Task(
                 name=blueprint.name,
                 status=blueprint.status,
+                type=blueprint.task_type,
                 estimated_hours=blueprint.estimated_hours,
                 billable=blueprint.billable,
+                leader_id=blueprint.leader_id,
+                start_date=start_anchor,
                 due_date=due_date,
             )
             tasks.append(task)
@@ -114,42 +122,53 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
     "website": ProjectTemplate(
         code_prefix="WEB",
         tasks=[
-            TaskBlueprint(name="Project Kickoff", duration_days=2, estimated_hours=6),
+            TaskBlueprint(
+                name="Project Kickoff",
+                duration_days=2,
+                estimated_hours=6,
+                task_type=TaskType.CHORE,
+            ),
             TaskBlueprint(
                 name="Discovery & Strategy",
                 duration_days=5,
                 depends_on=["Project Kickoff"],
                 estimated_hours=16,
+                task_type=TaskType.RESEARCH,
             ),
             TaskBlueprint(
                 name="Content Architecture",
                 duration_days=4,
                 depends_on=["Discovery & Strategy"],
                 estimated_hours=12,
+                task_type=TaskType.FEATURE,
             ),
             TaskBlueprint(
                 name="Visual Design",
                 duration_days=7,
                 depends_on=["Content Architecture"],
                 estimated_hours=30,
+                task_type=TaskType.FEATURE,
             ),
             TaskBlueprint(
                 name="Development Sprint",
                 duration_days=10,
                 depends_on=["Visual Design"],
                 estimated_hours=45,
+                task_type=TaskType.FEATURE,
             ),
             TaskBlueprint(
                 name="Quality Assurance",
                 duration_days=4,
                 depends_on=["Development Sprint"],
                 estimated_hours=18,
+                task_type=TaskType.QA,
             ),
             TaskBlueprint(
                 name="Launch",
                 duration_days=1,
                 depends_on=["Quality Assurance"],
                 estimated_hours=4,
+                task_type=TaskType.CHORE,
             ),
         ],
         milestones=[
@@ -160,36 +179,46 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
     "branding": ProjectTemplate(
         code_prefix="BRD",
         tasks=[
-            TaskBlueprint(name="Brand Workshop", duration_days=3, estimated_hours=8),
+            TaskBlueprint(
+                name="Brand Workshop",
+                duration_days=3,
+                estimated_hours=8,
+                task_type=TaskType.RESEARCH,
+            ),
             TaskBlueprint(
                 name="Audience Research",
                 duration_days=6,
                 depends_on=["Brand Workshop"],
                 estimated_hours=20,
+                task_type=TaskType.RESEARCH,
             ),
             TaskBlueprint(
                 name="Moodboards",
                 duration_days=4,
                 depends_on=["Audience Research"],
                 estimated_hours=16,
+                task_type=TaskType.FEATURE,
             ),
             TaskBlueprint(
                 name="Logo Exploration",
                 duration_days=5,
                 depends_on=["Moodboards"],
                 estimated_hours=24,
+                task_type=TaskType.FEATURE,
             ),
             TaskBlueprint(
                 name="Brand Guidelines",
                 duration_days=7,
                 depends_on=["Logo Exploration"],
                 estimated_hours=28,
+                task_type=TaskType.FEATURE,
             ),
             TaskBlueprint(
                 name="Handover",
                 duration_days=2,
                 depends_on=["Brand Guidelines"],
                 estimated_hours=6,
+                task_type=TaskType.CHORE,
             ),
         ],
         milestones=[
@@ -200,30 +229,39 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
     "consulting": ProjectTemplate(
         code_prefix="CON",
         tasks=[
-            TaskBlueprint(name="Initial Assessment", duration_days=3, estimated_hours=10),
+            TaskBlueprint(
+                name="Initial Assessment",
+                duration_days=3,
+                estimated_hours=10,
+                task_type=TaskType.RESEARCH,
+            ),
             TaskBlueprint(
                 name="Stakeholder Interviews",
                 duration_days=5,
                 depends_on=["Initial Assessment"],
                 estimated_hours=18,
+                task_type=TaskType.RESEARCH,
             ),
             TaskBlueprint(
                 name="Findings Synthesis",
                 duration_days=4,
                 depends_on=["Stakeholder Interviews"],
                 estimated_hours=14,
+                task_type=TaskType.FEATURE,
             ),
             TaskBlueprint(
                 name="Opportunity Mapping",
                 duration_days=4,
                 depends_on=["Findings Synthesis"],
                 estimated_hours=12,
+                task_type=TaskType.FEATURE,
             ),
             TaskBlueprint(
                 name="Roadmap Presentation",
                 duration_days=2,
                 depends_on=["Opportunity Mapping"],
                 estimated_hours=10,
+                task_type=TaskType.CHORE,
             ),
         ],
         milestones=[
@@ -247,6 +285,10 @@ def unregister_template(template_id: str) -> None:
 
 def build_plan(template_id: str, start_date: datetime) -> tuple[List[Task], List[Milestone]]:
     return template_library.build_plan(template_id, start_date)
+
+
+def list_templates() -> Dict[str, ProjectTemplate]:
+    return template_library.definitions()
 
 
 def project_code(prefix: str, sequence: int, *, year: int | None = None) -> str:

@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, root_validator
 
-from .projects import TaskStatus
+from .projects import TaskStatus, TaskType
 
 
 class ProjectTemplateTaskDefinition(BaseModel):
@@ -12,8 +12,10 @@ class ProjectTemplateTaskDefinition(BaseModel):
     duration_days: int = Field(..., gt=0)
     depends_on: List[str] = Field(default_factory=list)
     status: TaskStatus = TaskStatus.TODO
+    type: TaskType = TaskType.FEATURE
     estimated_hours: Optional[float] = None
     billable: bool = True
+    leader_id: Optional[str] = None
 
 
 class ProjectTemplateMilestoneDefinition(BaseModel):
@@ -46,3 +48,10 @@ class ProjectTemplateCreateRequest(BaseModel):
 
 class ProjectTemplateCreateResponse(BaseModel):
     template_id: str
+
+
+class ProjectTemplateDefinition(BaseModel):
+    template_id: str
+    code_prefix: str
+    tasks: List[ProjectTemplateTaskDefinition]
+    milestones: List[ProjectTemplateMilestoneDefinition]

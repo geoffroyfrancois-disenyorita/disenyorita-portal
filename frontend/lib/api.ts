@@ -23,6 +23,18 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
 export const api = {
   dashboard: () => request<DashboardSnapshot>("/dashboard"),
   projects: () => request<Project[]>("/projects"),
+  project: (projectId: string) => request<Project>(`/projects/${projectId}`),
+  updateProject: (projectId: string, payload: ProjectUpdatePayload) =>
+    request<Project>(`/projects/${projectId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+  projectTemplates: () => request<ProjectTemplateDefinition[]>("/project-templates"),
+  createProjectTemplate: (payload: ProjectTemplateCreateRequest) =>
+    request<ProjectTemplateCreateResponse>("/project-templates", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   clients: () => request<Client[]>("/clients"),
   client: (clientId: string) => request<Client>(`/clients/${clientId}`),
   clientDashboard: (clientId: string) => request<ClientDashboard>(`/clients/${clientId}/dashboard`),
@@ -90,6 +102,7 @@ export interface Project {
   project_type: string;
   status: string;
   start_date: string;
+  end_date?: string | null;
   manager_id: string;
   budget?: number;
   currency: string;
@@ -108,11 +121,88 @@ export interface Task {
   id: string;
   name: string;
   status: string;
+  type: string;
   assignee_id?: string;
+  leader_id?: string;
+  start_date?: string;
   due_date?: string;
   billable: boolean;
   estimated_hours?: number;
   logged_hours: number;
+  dependencies: string[];
+}
+
+export type TaskStatus = "todo" | "in_progress" | "review" | "done";
+export type TaskType = "feature" | "bug" | "chore" | "research" | "qa";
+export type ProjectStatus = "planning" | "in_progress" | "on_hold" | "completed" | "cancelled";
+
+export interface TaskUpdatePayload {
+  id: string;
+  name?: string;
+  status?: TaskStatus;
+  type?: TaskType;
+  assignee_id?: string;
+  leader_id?: string;
+  start_date?: string;
+  due_date?: string | null;
+  billable?: boolean;
+  estimated_hours?: number;
+  logged_hours?: number;
+  dependencies?: string[];
+}
+
+export interface MilestoneUpdatePayload {
+  id: string;
+  title?: string;
+  due_date?: string;
+  completed?: boolean;
+}
+
+export interface ProjectUpdatePayload {
+  name?: string;
+  status?: ProjectStatus;
+  manager_id?: string;
+  start_date?: string;
+  budget?: number;
+  currency?: string;
+  template_id?: string;
+  tasks?: TaskUpdatePayload[];
+  milestones?: MilestoneUpdatePayload[];
+}
+
+export interface ProjectTemplateTaskDefinition {
+  name: string;
+  duration_days: number;
+  depends_on: string[];
+  status: TaskStatus;
+  type: TaskType;
+  estimated_hours?: number;
+  billable: boolean;
+  leader_id?: string | null;
+}
+
+export interface ProjectTemplateMilestoneDefinition {
+  title: string;
+  offset_days: number;
+}
+
+export interface ProjectTemplateDefinition {
+  template_id: string;
+  code_prefix: string;
+  tasks: ProjectTemplateTaskDefinition[];
+  milestones: ProjectTemplateMilestoneDefinition[];
+}
+
+export interface ProjectTemplateCreateRequest {
+  template_id: string;
+  code_prefix: string;
+  tasks: ProjectTemplateTaskDefinition[];
+  milestones: ProjectTemplateMilestoneDefinition[];
+  overwrite?: boolean;
+}
+
+export interface ProjectTemplateCreateResponse {
+  template_id: string;
 }
 
 export type Industry = "hospitality" | "creative" | "technology" | "other";

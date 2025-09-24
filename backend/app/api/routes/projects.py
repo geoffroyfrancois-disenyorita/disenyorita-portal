@@ -2,7 +2,7 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException
 
-from ...schemas.projects import Project, ProjectSummary
+from ...schemas.projects import Project, ProjectSummary, ProjectUpdateRequest
 from ...services.data import store
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -19,6 +19,14 @@ def get_project(project_id: str) -> Project:
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+@router.patch("/{project_id}", response_model=Project)
+def update_project(project_id: str, payload: ProjectUpdateRequest) -> Project:
+    try:
+        return store.update_project(project_id, payload)
+    except ValueError as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/summary", response_model=ProjectSummary)

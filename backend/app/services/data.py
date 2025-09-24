@@ -24,12 +24,16 @@ from ..schemas.clients import (
 )
 from ..schemas.projects import (
     Milestone,
+    MilestoneUpdate,
     Project,
     ProjectStatus,
     ProjectSummary,
     ProjectTemplateType,
+    ProjectUpdateRequest,
     Task,
     TaskStatus,
+    TaskType,
+    TaskUpdate,
 )
 from ..schemas.financials import (
     Currency,
@@ -267,6 +271,19 @@ class InMemoryStore:
             return None
         return max(due_dates)
 
+    @staticmethod
+    def _derive_project_status_from_tasks(tasks: List[Task]) -> ProjectStatus:
+        if not tasks:
+            return ProjectStatus.PLANNING
+        statuses = {task.status for task in tasks}
+        if statuses and all(status == TaskStatus.DONE for status in statuses):
+            return ProjectStatus.COMPLETED
+        if any(status in {TaskStatus.IN_PROGRESS, TaskStatus.REVIEW} for status in statuses):
+            return ProjectStatus.IN_PROGRESS
+        if any(status == TaskStatus.DONE for status in statuses):
+            return ProjectStatus.IN_PROGRESS
+        return ProjectStatus.PLANNING
+
     def create_client_with_projects(self, payload: ClientCreateRequest) -> ClientWithProjects:
         client = Client(
             organization_name=payload.organization_name,
@@ -350,6 +367,84 @@ class InMemoryStore:
         self.clients[client.id] = client
 
         return ClientWithProjects(client=client, projects=created_projects)
+
+    def update_project(self, project_id: str, payload: ProjectUpdateRequest) -> Project:
+        project = self.projects.get(project_id)
+        if not project:
+            raise ValueError("Project not found")
+
+        update_data = payload.dict(exclude_unset=True)
+        template_id = update_data.pop("template_id", None)
+        task_updates = update_data.pop("tasks", None)
+        milestone_updates = update_data.pop("milestones", None)
+        now = datetime.utcnow()
+
+        start_date = update_data.get("start_date", project.start_date)
+
+        tasks = list(project.tasks)
+        milestones = list(project.milestones)
+
+        if template_id:
+            template_tasks, template_milestones = build_plan(template_id, start_date)
+            tasks = [task.copy(update={"updated_at": now}) for task in template_tasks]
+            milestones = [milestone.copy(update={"updated_at": now}) for milestone in template_milestones]
+            update_data["project_type"] = template_id
+            if "start_date" not in update_data:
+                update_data["start_date"] = start_date
+        elif "start_date" in update_data:
+            delta = update_data["start_date"] - project.start_date
+            if delta:
+                tasks = [
+                    task.copy(
+                        update={
+                            "start_date": task.start_date + delta if task.start_date else None,
+                            "due_date": task.due_date + delta if task.due_date else None,
+                            "updated_at": now,
+                        }
+                    )
+                    for task in tasks
+                ]
+                milestones = [
+                    milestone.copy(update={"due_date": milestone.due_date + delta, "updated_at": now})
+                    for milestone in milestones
+                ]
+
+        if task_updates is not None:
+            existing_tasks: Dict[str, Task] = {task.id: task for task in tasks}
+            for task_update in task_updates:
+                base = existing_tasks.get(task_update.id)
+                if not base:
+                    continue
+                update_fields = task_update.dict(exclude_unset=True)
+                update_fields.pop("id", None)
+                update_fields["updated_at"] = now
+                existing_tasks[task_update.id] = base.copy(update=update_fields)
+            tasks = [existing_tasks[task.id] for task in tasks if task.id in existing_tasks]
+
+        if milestone_updates is not None:
+            existing_milestones: Dict[str, Milestone] = {milestone.id: milestone for milestone in milestones}
+            for milestone_update in milestone_updates:
+                base = existing_milestones.get(milestone_update.id)
+                if not base:
+                    continue
+                update_fields = milestone_update.dict(exclude_unset=True)
+                update_fields.pop("id", None)
+                update_fields["updated_at"] = now
+                existing_milestones[milestone_update.id] = base.copy(update=update_fields)
+            milestones = [existing_milestones[milestone.id] for milestone in milestones if milestone.id in existing_milestones]
+
+        if template_id or "start_date" in update_data or task_updates is not None or milestone_updates is not None:
+            update_data["tasks"] = tasks
+            update_data["milestones"] = milestones
+            update_data["end_date"] = self._calculate_project_end(tasks, milestones)
+            if "status" not in update_data:
+                update_data["status"] = self._derive_project_status_from_tasks(tasks)
+
+        update_data["updated_at"] = now
+
+        updated_project = project.copy(update=update_data)
+        self.projects[project_id] = updated_project
+        return updated_project
 
     def client_dashboard(self, client_id: str) -> ClientDashboard:
         client = self.clients.get(client_id)

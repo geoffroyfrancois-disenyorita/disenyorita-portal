@@ -272,6 +272,14 @@ main {
   background: rgba(148, 163, 184, 0.08);
 }
 
+.clickable-row.active {
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.clickable-row.active:hover {
+  background: rgba(56, 189, 248, 0.18);
+}
+
 .back-link {
   display: inline-flex;
   align-items: center;
