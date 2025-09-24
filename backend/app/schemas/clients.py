@@ -1,14 +1,13 @@
+from datetime import datetime
 from enum import Enum
 from typing import List, Optional
-from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
-
-from .common import IdentifiedModel
 from pydantic.class_validators import root_validator
 
-from .projects import Milestone, Project, ProjectStatus, Task
+from .common import IdentifiedModel
 from .financials import Currency, InvoiceStatus
+from .projects import Milestone, Project, ProjectStatus, Task
 from .support import TicketStatus
 
 
@@ -111,6 +110,45 @@ class ClientCreateRequest(BaseModel):
         return values
 
 
+class ContactUpdate(BaseModel):
+    id: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    title: Optional[str] = None
+
+
+class InteractionUpdate(BaseModel):
+    id: Optional[str] = None
+    channel: Optional[InteractionChannel] = None
+    subject: Optional[str] = None
+    summary: Optional[str] = None
+    occurred_at: Optional[datetime] = None
+    owner_id: Optional[str] = None
+
+
+class DocumentUpdate(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = None
+    url: Optional[str] = None
+    version: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    signed: Optional[bool] = None
+
+
+class ClientUpdateRequest(BaseModel):
+    organization_name: Optional[str] = None
+    industry: Optional[Industry] = None
+    segment: Optional[ClientSegment] = None
+    billing_email: Optional[EmailStr] = None
+    preferred_channel: Optional[InteractionChannel] = None
+    timezone: Optional[str] = None
+    contacts: Optional[List[ContactUpdate]] = None
+    interactions: Optional[List[InteractionUpdate]] = None
+    documents: Optional[List[DocumentUpdate]] = None
+
+
 class ClientWithProjects(BaseModel):
     client: Client
     projects: List[Project]
@@ -179,3 +217,15 @@ class ClientDashboard(BaseModel):
     projects: List[ClientProjectDigest] = Field(default_factory=list)
     financials: ClientFinancialSnapshot
     support: ClientSupportSnapshot
+
+
+class ClientEngagement(BaseModel):
+    client_id: str
+    organization_name: str
+    segment: ClientSegment
+    active_projects: int
+    late_projects: int
+    outstanding_balance: float
+    next_milestone: Optional[Milestone] = None
+    last_interaction_at: Optional[datetime] = None
+    health: str

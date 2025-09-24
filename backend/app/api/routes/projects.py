@@ -2,7 +2,7 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException
 
-from ...schemas.projects import Project, ProjectSummary, ProjectUpdateRequest
+from ...schemas.projects import Project, ProjectProgress, ProjectSummary, ProjectUpdateRequest
 from ...services.data import store
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -11,6 +11,16 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 @router.get("", response_model=List[Project])
 def list_projects() -> List[Project]:
     return list(store.projects.values())
+
+
+@router.get("/summary", response_model=ProjectSummary)
+def project_summary() -> ProjectSummary:
+    return store.project_summary()
+
+
+@router.get("/portfolio", response_model=List[ProjectProgress])
+def project_portfolio() -> List[ProjectProgress]:
+    return store.project_portfolio()
 
 
 @router.get("/{project_id}", response_model=Project)
@@ -27,8 +37,3 @@ def update_project(project_id: str, payload: ProjectUpdateRequest) -> Project:
         return store.update_project(project_id, payload)
     except ValueError as exc:  # pragma: no cover - defensive
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@router.get("/summary", response_model=ProjectSummary)
-def project_summary() -> ProjectSummary:
-    return store.project_summary()
