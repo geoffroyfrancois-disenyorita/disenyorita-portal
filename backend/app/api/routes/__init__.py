@@ -1,5 +1,6 @@
 from . import (
     auth,
+    automation,
     clients,
     dashboard,
     financials,
@@ -13,6 +14,7 @@ from . import (
 
 __all__ = [
     "auth",
+    "automation",
     "clients",
     "dashboard",
     "financials",

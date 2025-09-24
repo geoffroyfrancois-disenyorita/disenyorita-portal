@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.config import get_settings
 from .api.routes import (
     auth,
+    automation,
     clients,
     dashboard,
     financials,
@@ -28,6 +29,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix=settings.api_v1_str)
+app.include_router(automation.router, prefix=settings.api_v1_str)
 app.include_router(dashboard.router, prefix=settings.api_v1_str)
 app.include_router(projects.router, prefix=settings.api_v1_str)
 app.include_router(project_templates.router, prefix=settings.api_v1_str)
