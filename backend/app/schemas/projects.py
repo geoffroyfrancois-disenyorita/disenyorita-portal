@@ -142,3 +142,61 @@ class ProjectProgress(BaseModel):
     next_milestone: Optional[Milestone] = None
     health: ProjectHealth
     updated_at: datetime
+
+
+class TaskAlertSeverity(str, Enum):
+    LATE = "late"
+    AT_RISK = "at_risk"
+
+
+class TaskAlert(BaseModel):
+    task_id: str
+    task_name: str
+    severity: TaskAlertSeverity
+    due_date: Optional[datetime] = None
+    message: str
+
+
+class TaskTimelineEntry(BaseModel):
+    task_id: str
+    name: str
+    status: TaskStatus
+    assignee_id: Optional[str] = None
+    start_date: Optional[datetime] = None
+    due_date: Optional[datetime] = None
+    estimated_hours: Optional[float] = None
+    logged_hours: float = 0
+    dependencies: List[str] = Field(default_factory=list)
+    is_late: bool = False
+    will_be_late: bool = False
+
+
+class TaskNotificationType(str, Enum):
+    START_CONFIRMATION = "start_confirmation"
+    AUTO_STARTED = "auto_started"
+
+
+class TaskNotification(BaseModel):
+    notification_id: str
+    project_id: str
+    project_name: str
+    task_id: str
+    task_name: str
+    type: TaskNotificationType
+    message: str
+    triggered_at: datetime
+    requires_confirmation: bool = False
+    allow_start_date_edit: bool = False
+    suggested_start_date: Optional[datetime] = None
+
+
+class ProjectTracker(BaseModel):
+    project_id: str
+    project_name: str
+    code: str
+    status: ProjectStatus
+    health: ProjectHealth
+    generated_at: datetime
+    tasks: List[TaskTimelineEntry]
+    alerts: List[TaskAlert]
+    notifications: List[TaskNotification]

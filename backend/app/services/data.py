@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Sequence
+from uuid import uuid4
+from typing import Dict, List, Sequence, Tuple
 
 from ..schemas.clients import (
     Client,
@@ -36,9 +37,15 @@ from ..schemas.projects import (
     ProjectStatus,
     ProjectSummary,
     ProjectTemplateType,
+    ProjectTracker,
     ProjectUpdateRequest,
     Task,
+    TaskAlert,
+    TaskAlertSeverity,
+    TaskNotification,
+    TaskNotificationType,
     TaskStatus,
+    TaskTimelineEntry,
     TaskType,
     TaskUpdate,
 )
@@ -104,6 +111,7 @@ class InMemoryStore:
         self.alerts: Dict[str, Alert] = {}
         self.automation_digests: List[AutomationDigest] = []
         self.automation_broadcasts: List[str] = []
+        self.task_notifications: List[TaskNotification] = []
         self.operating_expense_baselines: Dict[str, float] = {
             "Studio rent": 180_000.0,
             "Team salaries": 780_000.0,
@@ -534,7 +542,10 @@ class InMemoryStore:
 
         start_date = update_data.get("start_date", project.start_date)
 
-        tasks = list(project.tasks)
+        tasks = [
+            task if isinstance(task, Task) else Task.parse_obj(task)
+            for task in project.tasks
+        ]
         milestones = list(project.milestones)
 
         if template_id:
@@ -562,17 +573,67 @@ class InMemoryStore:
                     for milestone in milestones
                 ]
 
+        manual_started_ids: List[str] = []
+        completed_ids: List[str] = []
+
         if task_updates is not None:
-            existing_tasks: Dict[str, Task] = {task.id: task for task in tasks}
-            for task_update in task_updates:
+            existing_tasks: Dict[str, Task] = {}
+            ordered_task_ids: List[str] = []
+            for task in tasks:
+                if isinstance(task, Task):
+                    parsed_task = task
+                else:
+                    parsed_task = Task.parse_obj(task)
+                existing_tasks[parsed_task.id] = parsed_task
+                ordered_task_ids.append(parsed_task.id)
+            for task_payload in task_updates:
+                task_update = task_payload if isinstance(task_payload, TaskUpdate) else TaskUpdate(**task_payload)
                 base = existing_tasks.get(task_update.id)
                 if not base:
                     continue
                 update_fields = task_update.dict(exclude_unset=True)
                 update_fields.pop("id", None)
+                new_status = update_fields.get("status")
+                if (
+                    new_status == TaskStatus.IN_PROGRESS
+                    and base.status != TaskStatus.IN_PROGRESS
+                    and "start_date" not in update_fields
+                    and base.start_date is None
+                ):
+                    update_fields["start_date"] = now
                 update_fields["updated_at"] = now
-                existing_tasks[task_update.id] = base.copy(update=update_fields)
-            tasks = [existing_tasks[task.id] for task in tasks if task.id in existing_tasks]
+                updated_task = base.copy(update=update_fields)
+                if base.status != updated_task.status:
+                    if updated_task.status == TaskStatus.IN_PROGRESS:
+                        manual_started_ids.append(updated_task.id)
+                    if updated_task.status == TaskStatus.DONE:
+                        completed_ids.append(updated_task.id)
+                existing_tasks[task_update.id] = updated_task
+            tasks = [existing_tasks[task_id] for task_id in ordered_task_ids if task_id in existing_tasks]
+
+        manual_started_tasks: List[Task] = []
+        completed_tasks: List[Task] = []
+
+        if manual_started_ids or completed_ids:
+            lookup_after_updates = {task.id: task for task in tasks}
+            manual_started_tasks = [
+                lookup_after_updates[task_id]
+                for task_id in manual_started_ids
+                if task_id in lookup_after_updates
+            ]
+            completed_tasks = [
+                lookup_after_updates[task_id]
+                for task_id in completed_ids
+                if task_id in lookup_after_updates
+            ]
+
+        auto_started_tasks: List[Task] = []
+        if completed_tasks:
+            tasks, auto_started_tasks = self._auto_start_ready_tasks(
+                tasks,
+                completed_tasks=completed_tasks,
+                now=now,
+            )
 
         if milestone_updates is not None:
             existing_milestones: Dict[str, Milestone] = {milestone.id: milestone for milestone in milestones}
@@ -586,7 +647,17 @@ class InMemoryStore:
                 existing_milestones[milestone_update.id] = base.copy(update=update_fields)
             milestones = [existing_milestones[milestone.id] for milestone in milestones if milestone.id in existing_milestones]
 
-        if template_id or "start_date" in update_data or task_updates is not None or milestone_updates is not None:
+        if manual_started_tasks or auto_started_tasks:
+            project_name = update_data.get("name", project.name)
+            self._emit_task_notifications(
+                project_id=project_id,
+                project_name=project_name,
+                manual_starts=manual_started_tasks,
+                auto_starts=auto_started_tasks,
+                triggered_at=now,
+            )
+
+        if template_id or "start_date" in update_data or task_updates is not None or milestone_updates is not None or auto_started_tasks:
             update_data["tasks"] = tasks
             update_data["milestones"] = milestones
             update_data["end_date"] = self._calculate_project_end(tasks, milestones)
@@ -598,6 +669,104 @@ class InMemoryStore:
         updated_project = project.copy(update=update_data)
         self.projects[project_id] = updated_project
         return updated_project
+
+    def _auto_start_ready_tasks(
+        self,
+        tasks: List[Task],
+        *,
+        completed_tasks: List[Task],
+        now: datetime,
+    ) -> Tuple[List[Task], List[Task]]:
+        if not completed_tasks:
+            return tasks, []
+
+        completed_ids = {task.id for task in completed_tasks}
+        tasks_by_id = {task.id: task for task in tasks}
+        auto_started: List[Task] = []
+
+        for index, task in enumerate(tasks):
+            if task.status != TaskStatus.TODO:
+                continue
+
+            dependency_objects = [
+                tasks_by_id[dependency]
+                for dependency in task.dependencies
+                if dependency in tasks_by_id
+            ]
+
+            if task.dependencies:
+                if not dependency_objects or not all(
+                    dependency.status == TaskStatus.DONE for dependency in dependency_objects
+                ):
+                    continue
+                if not any(dependency.id in completed_ids for dependency in dependency_objects):
+                    continue
+            else:
+                if index == 0:
+                    continue
+                prior_tasks = tasks[:index]
+                if not any(previous.id in completed_ids for previous in prior_tasks):
+                    continue
+                if any(previous.status != TaskStatus.DONE for previous in prior_tasks):
+                    continue
+
+            updated_task = task.copy(
+                update={
+                    "status": TaskStatus.IN_PROGRESS,
+                    "start_date": task.start_date or now,
+                    "updated_at": now,
+                }
+            )
+            tasks_by_id[task.id] = updated_task
+            auto_started.append(updated_task)
+
+        ordered_tasks = [tasks_by_id[task.id] for task in tasks]
+        return ordered_tasks, auto_started
+
+    def _emit_task_notifications(
+        self,
+        *,
+        project_id: str,
+        project_name: str,
+        manual_starts: List[Task],
+        auto_starts: List[Task],
+        triggered_at: datetime,
+    ) -> None:
+        for task in manual_starts:
+            notification = TaskNotification(
+                notification_id=str(uuid4()),
+                project_id=project_id,
+                project_name=project_name,
+                task_id=task.id,
+                task_name=task.name,
+                type=TaskNotificationType.START_CONFIRMATION,
+                message=f"Task '{task.name}' was marked as in progress. Confirm the kickoff?",
+                triggered_at=triggered_at,
+                requires_confirmation=True,
+                allow_start_date_edit=True,
+                suggested_start_date=task.start_date or triggered_at,
+            )
+            self._record_task_notification(notification)
+
+        for task in auto_starts:
+            notification = TaskNotification(
+                notification_id=str(uuid4()),
+                project_id=project_id,
+                project_name=project_name,
+                task_id=task.id,
+                task_name=task.name,
+                type=TaskNotificationType.AUTO_STARTED,
+                message="Task automatically moved to in progress after predecessors completed.",
+                triggered_at=triggered_at,
+                requires_confirmation=False,
+                allow_start_date_edit=True,
+                suggested_start_date=task.start_date or triggered_at,
+            )
+            self._record_task_notification(notification)
+
+    def _record_task_notification(self, notification: TaskNotification) -> None:
+        self.task_notifications.append(notification)
+        self.task_notifications = self.task_notifications[-200:]
 
     def client_dashboard(self, client_id: str) -> ClientDashboard:
         client = self.clients.get(client_id)
@@ -812,6 +981,103 @@ class InMemoryStore:
             )
         portfolio.sort(key=lambda record: record.updated_at, reverse=True)
         return portfolio
+
+    def project_tracker(self, project_id: str) -> ProjectTracker:
+        project = self.projects.get(project_id)
+        if not project:
+            raise ValueError("Project not found")
+
+        now = datetime.utcnow()
+        alerts: List[TaskAlert] = []
+        timeline: List[TaskTimelineEntry] = []
+        late_tasks = 0
+
+        for task in project.tasks:
+            is_late = bool(
+                task.due_date and task.due_date < now and task.status != TaskStatus.DONE
+            )
+            will_be_late = bool(
+                task.due_date
+                and task.status in {TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.REVIEW}
+                and not is_late
+                and task.due_date - now <= timedelta(days=2)
+            )
+
+            if is_late:
+                late_tasks += 1
+                overdue_delta = now - task.due_date
+                days_overdue = max(overdue_delta.days, 0)
+                alerts.append(
+                    TaskAlert(
+                        task_id=task.id,
+                        task_name=task.name,
+                        severity=TaskAlertSeverity.LATE,
+                        due_date=task.due_date,
+                        message=(
+                            f"Task '{task.name}' is overdue by {days_overdue} day(s)."
+                            if days_overdue
+                            else f"Task '{task.name}' is overdue."
+                        ),
+                    )
+                )
+            elif will_be_late:
+                remaining = task.due_date - now if task.due_date else None
+                hours_left = int(remaining.total_seconds() // 3600) if remaining else 0
+                alerts.append(
+                    TaskAlert(
+                        task_id=task.id,
+                        task_name=task.name,
+                        severity=TaskAlertSeverity.AT_RISK,
+                        due_date=task.due_date,
+                        message=(
+                            f"Task '{task.name}' is at risk of slipping (due in {hours_left} hour(s))."
+                        ),
+                    )
+                )
+
+            timeline.append(
+                TaskTimelineEntry(
+                    task_id=task.id,
+                    name=task.name,
+                    status=task.status,
+                    assignee_id=task.assignee_id,
+                    start_date=task.start_date,
+                    due_date=task.due_date,
+                    estimated_hours=task.estimated_hours,
+                    logged_hours=task.logged_hours,
+                    dependencies=list(task.dependencies),
+                    is_late=is_late,
+                    will_be_late=will_be_late,
+                )
+            )
+
+        if project.status == ProjectStatus.COMPLETED:
+            health = ProjectHealth.COMPLETED
+        elif project.status == ProjectStatus.ON_HOLD:
+            health = ProjectHealth.BLOCKED
+        elif late_tasks > 0:
+            health = ProjectHealth.AT_RISK
+        else:
+            health = ProjectHealth.ON_TRACK
+
+        notifications = [
+            notification
+            for notification in self.task_notifications
+            if notification.project_id == project_id
+        ]
+        notifications.sort(key=lambda item: item.triggered_at, reverse=True)
+
+        return ProjectTracker(
+            project_id=project.id,
+            project_name=project.name,
+            code=project.code,
+            status=project.status,
+            health=health,
+            generated_at=now,
+            tasks=timeline,
+            alerts=alerts,
+            notifications=notifications,
+        )
 
     def project_summary(self) -> ProjectSummary:
         by_status: Dict[str, int] = {status.value: 0 for status in ProjectStatus}
