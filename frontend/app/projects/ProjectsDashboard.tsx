@@ -16,6 +16,89 @@ import {
 const taskStatusOptions: TaskStatus[] = ["todo", "in_progress", "review", "done"];
 const taskTypeOptions: TaskType[] = ["feature", "bug", "chore", "research", "qa"];
 const projectStatusOptions: ProjectStatus[] = ["planning", "in_progress", "on_hold", "completed", "cancelled"];
+const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+type TimelineView = "gantt" | "calendar";
+
+function parseIsoDate(value?: string | null): Date | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
+}
+
+function startOfMonth(date: Date): Date {
+  const next = new Date(date.getTime());
+  next.setDate(1);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function addDays(date: Date, amount: number): Date {
+  const next = new Date(date.getTime());
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function addMonths(date: Date, amount: number): Date {
+  const next = new Date(date.getTime());
+  next.setMonth(next.getMonth() + amount);
+  return next;
+}
+
+function toDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getInitialCalendarMonth(project?: Project | null): Date {
+  const today = new Date();
+  if (!project) {
+    return today;
+  }
+  const candidates: Date[] = [];
+  const projectStart = parseIsoDate(project.start_date);
+  if (projectStart) {
+    candidates.push(projectStart);
+  }
+  const projectEnd = parseIsoDate(project.end_date ?? undefined);
+  if (projectEnd) {
+    candidates.push(projectEnd);
+  }
+  project.tasks.forEach((task) => {
+    const start = parseIsoDate(task.start_date);
+    const due = parseIsoDate(task.due_date);
+    if (start) {
+      candidates.push(start);
+    }
+    if (due) {
+      candidates.push(due);
+    }
+  });
+  if (candidates.length === 0) {
+    return today;
+  }
+  candidates.sort((a, b) => a.getTime() - b.getTime());
+  return candidates[0];
+}
+
+interface TimelineTaskInfo {
+  task: Task;
+  startDate: Date | null;
+  endDate: Date | null;
+  dueDate: Date | null;
+  dueDateKey: string | null;
+}
+
+interface CalendarDayCell {
+  date: Date;
+  inCurrentMonth: boolean;
+  tasks: TimelineTaskInfo[];
+}
 
 function formatLabel(value: string): string {
   return value
@@ -172,6 +255,10 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
   const [taskEdits, setTaskEdits] = useState<ProjectTaskEditState[]>(
     initialProjects.length > 0 ? initialProjects[0].tasks.map(createTaskEditState) : []
   );
+  const [timelineView, setTimelineView] = useState<TimelineView>("gantt");
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() =>
+    startOfMonth(getInitialCalendarMonth(initialProjects[0] ?? null))
+  );
   const [projectMessage, setProjectMessage] = useState<string | null>(null);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [projectLoading, setProjectLoading] = useState(false);
@@ -229,6 +316,10 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
     }
   }, [selectedProject]);
 
+  useEffect(() => {
+    setCalendarMonth(startOfMonth(getInitialCalendarMonth(selectedProject)));
+  }, [selectedProject]);
+
   const dependencyLookup = useMemo(() => {
     if (!selectedProject) {
       return {} as Record<string, string>;
@@ -254,6 +345,110 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
       return accumulator;
     }, {});
   }, [taskEdits]);
+
+  const timelineTasks = useMemo<TimelineTaskInfo[]>(() => {
+    if (!selectedProject) {
+      return [];
+    }
+    const projectStartDate = parseIsoDate(selectedProject.start_date);
+    return selectedProject.tasks.map((task) => {
+      const edit = taskEditMap[task.id];
+      const dueDateString = edit?.due_date ? edit.due_date : task.due_date ?? null;
+      const dueDate = parseIsoDate(dueDateString);
+      const rawStart = parseIsoDate(task.start_date) ?? dueDate ?? projectStartDate;
+      let computedEnd = dueDate ?? rawStart;
+      if (rawStart && computedEnd && computedEnd.getTime() < rawStart.getTime()) {
+        computedEnd = rawStart;
+      }
+      return {
+        task,
+        startDate: rawStart ?? null,
+        endDate: computedEnd ?? null,
+        dueDate,
+        dueDateKey: dueDate ? toDateKey(dueDate) : null
+      };
+    });
+  }, [selectedProject, taskEditMap]);
+
+  const ganttTimeline = useMemo(() => {
+    const tasksWithDates = timelineTasks
+      .filter((item) => item.startDate)
+      .map((item) => {
+        const start = item.startDate as Date;
+        const endCandidate = item.endDate ?? start;
+        const end = endCandidate.getTime() < start.getTime() ? start : endCandidate;
+        return {
+          ...item,
+          start,
+          end
+        };
+      });
+
+    if (tasksWithDates.length === 0) {
+      return null;
+    }
+
+    const rangeStart = tasksWithDates.reduce((min, item) => (item.start < min ? item.start : min), tasksWithDates[0].start);
+    const rangeEnd = tasksWithDates.reduce((max, item) => (item.end > max ? item.end : max), tasksWithDates[0].end);
+    const totalMsRaw = rangeEnd.getTime() - rangeStart.getTime();
+    const totalMs = totalMsRaw <= 0 ? DAY_IN_MS : totalMsRaw;
+
+    const tasks = tasksWithDates.map((item) => {
+      const offsetMs = Math.max(0, item.start.getTime() - rangeStart.getTime());
+      const durationMsRaw = item.end.getTime() - item.start.getTime();
+      const durationMs = durationMsRaw <= 0 ? DAY_IN_MS : durationMsRaw;
+      const offsetPercent = totalMsRaw <= 0 ? 0 : (offsetMs / totalMs) * 100;
+      const widthPercentRaw = (durationMs / totalMs) * 100;
+      const widthPercent = Math.min(100 - offsetPercent, Math.max(2, widthPercentRaw));
+      return {
+        ...item,
+        offsetPercent,
+        widthPercent
+      };
+    });
+
+    return {
+      start: rangeStart,
+      end: rangeEnd,
+      tasks
+    };
+  }, [timelineTasks]);
+
+  const calendarDays = useMemo<CalendarDayCell[]>(() => {
+    const monthStart = startOfMonth(calendarMonth);
+    const currentMonth = monthStart.getMonth();
+    const currentYear = monthStart.getFullYear();
+    const gridStart = addDays(monthStart, -monthStart.getDay());
+    const days: CalendarDayCell[] = [];
+
+    for (let index = 0; index < 42; index += 1) {
+      const date = addDays(gridStart, index);
+      date.setHours(0, 0, 0, 0);
+      const inCurrentMonth = date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+      const key = toDateKey(date);
+      const tasks = timelineTasks.filter((item) => item.dueDateKey === key);
+      days.push({
+        date,
+        inCurrentMonth,
+        tasks
+      });
+    }
+
+    return days;
+  }, [calendarMonth, timelineTasks]);
+
+  const handleCalendarPrevious = () => {
+    setCalendarMonth((prev) => startOfMonth(addMonths(prev, -1)));
+  };
+
+  const handleCalendarNext = () => {
+    setCalendarMonth((prev) => startOfMonth(addMonths(prev, 1)));
+  };
+
+  const calendarMonthLabel = calendarMonth.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric"
+  });
 
   const handleProjectClick = async (projectId: string) => {
     const existing = projects.find((project) => project.id === projectId) ?? null;
@@ -635,6 +830,27 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
 
               <fieldset className="form-section">
                 <legend>Agile Task Board</legend>
+                <div className="timeline-toolbar">
+                  <span className="text-muted" style={{ fontSize: "0.9rem" }}>
+                    Update task assignments below and choose your preferred timeline view.
+                  </span>
+                  <div className="timeline-toggle">
+                    <button
+                      type="button"
+                      className={`button ghost${timelineView === "gantt" ? " active" : ""}`}
+                      onClick={() => setTimelineView("gantt")}
+                    >
+                      Gantt view
+                    </button>
+                    <button
+                      type="button"
+                      className={`button ghost${timelineView === "calendar" ? " active" : ""}`}
+                      onClick={() => setTimelineView("calendar")}
+                    >
+                      Calendar view
+                    </button>
+                  </div>
+                </div>
                 <div className="table-scroll">
                   <table className="table">
                     <thead>
@@ -715,6 +931,84 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                       })}
                     </tbody>
                   </table>
+                </div>
+                <div className="timeline-visual">
+                  {timelineView === "gantt" ? (
+                    ganttTimeline && ganttTimeline.tasks.length > 0 ? (
+                      <div className="gantt-wrapper">
+                        <div className="gantt-range">
+                          {formatDate(ganttTimeline.start.toISOString())} – {formatDate(ganttTimeline.end.toISOString())}
+                        </div>
+                        <div className="gantt-rows">
+                          {ganttTimeline.tasks.map((item) => (
+                            <div key={item.task.id} className="gantt-row">
+                              <div>
+                                <strong>{item.task.name}</strong>
+                                <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+                                  {formatDate(item.start.toISOString())} – {formatDate(item.end.toISOString())}
+                                </div>
+                              </div>
+                              <div className="gantt-track">
+                                <div
+                                  className="gantt-bar"
+                                  style={{ left: `${item.offsetPercent}%`, width: `${item.widthPercent}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-muted" style={{ margin: "0.5rem 0" }}>
+                        Add start and due dates to tasks to generate a Gantt chart timeline.
+                      </p>
+                    )
+                  ) : (
+                    <div className="calendar-wrapper">
+                      <div className="calendar-header">
+                        <button type="button" className="button ghost" onClick={handleCalendarPrevious}>
+                          ← Prev
+                        </button>
+                        <div className="calendar-header-title">{calendarMonthLabel}</div>
+                        <button type="button" className="button ghost" onClick={handleCalendarNext}>
+                          Next →
+                        </button>
+                      </div>
+                      <div className="calendar-grid calendar-grid--labels">
+                        {dayNames.map((day) => (
+                          <div key={day} className="calendar-label">
+                            {day}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="calendar-grid">
+                        {calendarDays.map((day) => (
+                          <div
+                            key={toDateKey(day.date)}
+                            className={`calendar-day${day.inCurrentMonth ? "" : " muted"}`}
+                          >
+                            <span className="calendar-date">{day.date.getDate()}</span>
+                            {day.tasks.length === 0 ? (
+                              <span className="text-muted" style={{ fontSize: "0.75rem" }}>
+                                No due tasks
+                              </span>
+                            ) : (
+                              <ul className="stack">
+                                {day.tasks.map((item) => (
+                                  <li
+                                    key={item.task.id}
+                                    className={`calendar-task status-${item.task.status}`}
+                                  >
+                                    {item.task.name}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </fieldset>
 
