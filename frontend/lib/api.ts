@@ -117,6 +117,10 @@ export interface OperationsProject {
   late_tasks: number;
   next_milestone_title?: string | null;
   next_milestone_due?: string | null;
+  active_sprint_name?: string | null;
+  sprint_committed_points?: number | null;
+  sprint_completed_points?: number | null;
+  velocity?: number | null;
 }
 
 export interface CapacityAlert {
@@ -205,6 +209,8 @@ export interface Project {
   currency: string;
   milestones: Milestone[];
   tasks: Task[];
+  sprints: Sprint[];
+  active_sprint_id?: string | null;
 }
 
 export interface Milestone {
@@ -227,11 +233,32 @@ export interface Task {
   estimated_hours?: number;
   logged_hours: number;
   dependencies: string[];
+  priority: TaskPriority;
+  story_points?: number | null;
+  sprint_id?: string | null;
 }
 
 export type TaskStatus = "todo" | "in_progress" | "review" | "done";
 export type TaskType = "feature" | "bug" | "chore" | "research" | "qa";
+export type TaskPriority = "low" | "medium" | "high" | "critical";
 export type ProjectStatus = "planning" | "in_progress" | "on_hold" | "completed" | "cancelled";
+
+export type SprintStatus = "planning" | "active" | "completed" | "cancelled";
+
+export interface Sprint {
+  id: string;
+  name: string;
+  goal?: string | null;
+  status: SprintStatus;
+  start_date: string;
+  end_date: string;
+  committed_points: number;
+  completed_points: number;
+  velocity?: number | null;
+  focus_areas: string[];
+  created_at: string;
+  updated_at: string;
+}
 
 export interface TaskUpdatePayload {
   id: string;
@@ -246,6 +273,9 @@ export interface TaskUpdatePayload {
   estimated_hours?: number;
   logged_hours?: number;
   dependencies?: string[];
+  priority?: TaskPriority;
+  story_points?: number | null;
+  sprint_id?: string | null;
 }
 
 export interface MilestoneUpdatePayload {
@@ -276,6 +306,8 @@ export interface ProjectTemplateTaskDefinition {
   estimated_hours?: number;
   billable: boolean;
   leader_id?: string | null;
+  story_points?: number | null;
+  priority: TaskPriority;
 }
 
 export interface ProjectTemplateMilestoneDefinition {

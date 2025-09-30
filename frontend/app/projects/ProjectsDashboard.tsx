@@ -7,7 +7,9 @@ import {
   ProjectTemplateCreateRequest,
   ProjectTemplateDefinition,
   ProjectUpdatePayload,
+  Sprint,
   Task,
+  TaskPriority,
   TaskStatus,
   TaskType,
   api
@@ -15,11 +17,29 @@ import {
 
 const taskStatusOptions: TaskStatus[] = ["todo", "in_progress", "review", "done"];
 const taskTypeOptions: TaskType[] = ["feature", "bug", "chore", "research", "qa"];
+const taskPriorityOptions: TaskPriority[] = ["low", "medium", "high", "critical"];
 const projectStatusOptions: ProjectStatus[] = ["planning", "in_progress", "on_hold", "completed", "cancelled"];
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 type TimelineView = "gantt" | "calendar";
+
+function taskStoryPoints(task: Task): number {
+  if (typeof task.story_points === "number") {
+    return Math.max(task.story_points, 0);
+  }
+  if (typeof task.estimated_hours === "number") {
+    const computed = Math.round((task.estimated_hours / 4) * 10) / 10;
+    return computed > 0 ? computed : 1;
+  }
+  return 1;
+}
+
+function formatSprintRange(sprint: Sprint): string {
+  const start = new Date(sprint.start_date).toLocaleDateString();
+  const end = new Date(sprint.end_date).toLocaleDateString();
+  return `${start} → ${end}`;
+}
 
 function parseIsoDate(value?: string | null): Date | null {
   if (!value) {
@@ -100,6 +120,23 @@ interface CalendarDayCell {
   tasks: TimelineTaskInfo[];
 }
 
+interface AgileSummary {
+  totalPoints: number;
+  completedPoints: number;
+  remainingPoints: number;
+  velocity: number | null;
+  forecastDate: Date | null;
+  activeSprint?: {
+    sprint: Sprint;
+    committed: number;
+    completed: number;
+  } | null;
+  backlogByStatus: Record<string, number>;
+  backlogByPriority: Record<string, number>;
+  unscheduled: number;
+  upcomingSprints: Sprint[];
+}
+
 function formatLabel(value: string): string {
   return value
     .replace(/_/g, " ")
@@ -161,6 +198,9 @@ interface ProjectTaskEditState {
   type: TaskType;
   leader_id: string;
   due_date: string;
+  priority: TaskPriority;
+  story_points: string;
+  sprint_id: string;
 }
 
 interface TemplateTaskRow {
@@ -172,6 +212,8 @@ interface TemplateTaskRow {
   estimatedHours: string;
   billable: boolean;
   leaderId: string;
+  priority: TaskPriority;
+  storyPoints: string;
 }
 
 interface TemplateMilestoneRow {
@@ -187,6 +229,8 @@ interface TemplateFormState {
   milestones: TemplateMilestoneRow[];
 }
 
+type TaskUpdateInput = ProjectUpdatePayload["tasks"] extends (infer R)[] ? R : never;
+
 function normalizeTaskStatus(value: string): TaskStatus {
   return taskStatusOptions.includes(value as TaskStatus) ? (value as TaskStatus) : "todo";
 }
@@ -197,6 +241,10 @@ function normalizeTaskType(value: string): TaskType {
 
 function normalizeProjectStatus(value: string): ProjectStatus {
   return projectStatusOptions.includes(value as ProjectStatus) ? (value as ProjectStatus) : "planning";
+}
+
+function normalizeTaskPriority(value: string): TaskPriority {
+  return taskPriorityOptions.includes(value as TaskPriority) ? (value as TaskPriority) : "medium";
 }
 
 function createProjectFormState(project: Project): ProjectFormState {
@@ -217,7 +265,10 @@ function createTaskEditState(task: Task): ProjectTaskEditState {
     status: normalizeTaskStatus(task.status),
     type: normalizeTaskType(task.type),
     leader_id: task.leader_id ?? "",
-    due_date: isoToDateInput(task.due_date)
+    due_date: isoToDateInput(task.due_date),
+    priority: task.priority,
+    story_points: task.story_points !== undefined && task.story_points !== null ? String(task.story_points) : "",
+    sprint_id: task.sprint_id ?? ""
   };
 }
 
@@ -230,7 +281,9 @@ function createTemplateTaskRow(): TemplateTaskRow {
     type: "feature",
     estimatedHours: "",
     billable: true,
-    leaderId: ""
+    leaderId: "",
+    priority: "medium",
+    storyPoints: ""
   };
 }
 
@@ -329,6 +382,150 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
       return accumulator;
     }, {});
   }, [selectedProject]);
+
+  const sortedSprints = useMemo(() => {
+    if (!selectedProject) {
+      return [] as Sprint[];
+    }
+    return [...selectedProject.sprints].sort(
+      (a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+    );
+  }, [selectedProject]);
+
+  const sprintLookup = useMemo(() => {
+    return sortedSprints.reduce<Record<string, Sprint>>((accumulator, sprint) => {
+      accumulator[sprint.id] = sprint;
+      return accumulator;
+    }, {});
+  }, [sortedSprints]);
+
+  const agileSummary = useMemo<AgileSummary | null>(() => {
+    if (!selectedProject) {
+      return null;
+    }
+    const statusBaseline = taskStatusOptions.reduce<Record<string, number>>((accumulator, status) => {
+      accumulator[status] = 0;
+      return accumulator;
+    }, {} as Record<string, number>);
+    const priorityBaseline = taskPriorityOptions.reduce<Record<string, number>>(
+      (accumulator, priority) => {
+        accumulator[priority] = 0;
+        return accumulator;
+      },
+      {} as Record<string, number>
+    );
+
+    const backlogByStatus: Record<string, number> = { ...statusBaseline };
+    const backlogByPriority: Record<string, number> = { ...priorityBaseline };
+    let totalPoints = 0;
+    let completedPoints = 0;
+    let unscheduled = 0;
+
+    selectedProject.tasks.forEach((task) => {
+      const points = taskStoryPoints(task);
+      totalPoints += points;
+      if (normalizeTaskStatus(task.status) === "done") {
+        completedPoints += points;
+      }
+      const statusKey = normalizeTaskStatus(task.status);
+      backlogByStatus[statusKey] = (backlogByStatus[statusKey] ?? 0) + 1;
+      const priorityKey = normalizeTaskPriority(task.priority);
+      backlogByPriority[priorityKey] = (backlogByPriority[priorityKey] ?? 0) + 1;
+      if (!task.sprint_id) {
+        unscheduled += 1;
+      }
+    });
+
+    const activeSprint = selectedProject.active_sprint_id
+      ? sortedSprints.find((sprint) => sprint.id === selectedProject.active_sprint_id)
+      : sortedSprints.find((sprint) => sprint.status === "active");
+
+    let activeSprintDetails: AgileSummary["activeSprint"] = null;
+    if (activeSprint) {
+      const sprintTasks = selectedProject.tasks.filter((task) => task.sprint_id === activeSprint.id);
+      const committed = sprintTasks.reduce((sum, task) => sum + taskStoryPoints(task), 0);
+      const completed = sprintTasks
+        .filter((task) => normalizeTaskStatus(task.status) === "done")
+        .reduce((sum, task) => sum + taskStoryPoints(task), 0);
+      activeSprintDetails = { sprint: activeSprint, committed, completed };
+    }
+
+    const completedSprints = sortedSprints.filter(
+      (sprint) => sprint.status === "completed" && sprint.completed_points > 0
+    );
+    const velocity = completedSprints.length
+      ? completedSprints.reduce((sum, sprint) => sum + sprint.completed_points, 0) /
+        completedSprints.length
+      : null;
+
+    const remainingPoints = Math.max(totalPoints - completedPoints, 0);
+    let forecastDate: Date | null = null;
+    if (velocity && velocity > 0 && completedSprints.length > 0) {
+      const averageDurationMs =
+        completedSprints.reduce((sum, sprint) => {
+          const duration =
+            new Date(sprint.end_date).getTime() - new Date(sprint.start_date).getTime();
+          const minimum = DAY_IN_MS * 7;
+          return sum + Math.max(duration, minimum);
+        }, 0) / completedSprints.length;
+      const baseline = activeSprint
+        ? new Date(activeSprint.end_date)
+        : selectedProject.end_date
+        ? new Date(selectedProject.end_date)
+        : new Date(selectedProject.start_date);
+      const projectedMs = averageDurationMs * (remainingPoints / velocity);
+      forecastDate = new Date(baseline.getTime() + projectedMs);
+    }
+
+    const upcomingSprints = sortedSprints.filter((sprint) => {
+      if (sprint.status === "cancelled" || sprint.status === "completed") {
+        return false;
+      }
+      if (activeSprint && sprint.id === activeSprint.id) {
+        return false;
+      }
+      return true;
+    });
+
+    return {
+      totalPoints,
+      completedPoints,
+      remainingPoints,
+      velocity,
+      forecastDate,
+      activeSprint: activeSprintDetails,
+      backlogByStatus,
+      backlogByPriority,
+      unscheduled,
+      upcomingSprints
+    };
+  }, [selectedProject, sortedSprints]);
+
+  const activeSprintDetails = agileSummary?.activeSprint ?? null;
+  const sprintProgress = activeSprintDetails && activeSprintDetails.committed > 0
+    ? Math.min(
+        100,
+        Math.round((activeSprintDetails.completed / activeSprintDetails.committed) * 100)
+      )
+    : 0;
+  const velocityLabel = agileSummary?.velocity
+    ? `${agileSummary.velocity.toFixed(1)} pts / sprint`
+    : "Not enough data";
+  const forecastLabel = agileSummary?.forecastDate
+    ? agileSummary.forecastDate.toLocaleDateString()
+    : "Not enough data";
+  const backlogStatusEntries = agileSummary
+    ? taskStatusOptions.map((status) => ({
+        status,
+        count: agileSummary.backlogByStatus[status] ?? 0
+      }))
+    : [];
+  const backlogPriorityEntries = agileSummary
+    ? taskPriorityOptions.map((priority) => ({
+        priority,
+        count: agileSummary.backlogByPriority[priority] ?? 0
+      }))
+    : [];
 
   const templateIdOptions = useMemo(() => {
     const identifiers = new Set<string>();
@@ -558,13 +755,39 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
             dueDateValue = null;
           }
 
-          return {
+          const update: TaskUpdateInput = {
             id: task.id,
             status: task.status,
             type: task.type,
-            leader_id: task.leader_id.trim() ? task.leader_id.trim() : undefined,
-            due_date: dueDateValue
+            leader_id: task.leader_id.trim() ? task.leader_id.trim() : undefined
           };
+
+          if (dueDateValue !== undefined) {
+            update.due_date = dueDateValue;
+          }
+
+          if (original && task.priority !== original.priority) {
+            update.priority = task.priority;
+          }
+
+          const trimmedPoints = task.story_points.trim();
+          const originalPoints = original?.story_points ?? null;
+          if (trimmedPoints) {
+            const parsedPoints = Number(trimmedPoints);
+            if (!Number.isNaN(parsedPoints) && parsedPoints !== originalPoints) {
+              update.story_points = parsedPoints;
+            }
+          } else if (originalPoints !== null && originalPoints !== undefined) {
+            update.story_points = null;
+          }
+
+          const trimmedSprint = task.sprint_id.trim();
+          const originalSprint = original?.sprint_id ?? "";
+          if (trimmedSprint !== originalSprint) {
+            update.sprint_id = trimmedSprint ? trimmedSprint : null;
+          }
+
+          return update;
         })
       };
 
@@ -615,6 +838,9 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
       const duration = Math.max(1, Number(task.durationDays) || 1);
       const estimated = task.estimatedHours.trim() ? Number(task.estimatedHours) : undefined;
       const cleanEstimated = estimated !== undefined && !Number.isNaN(estimated) ? estimated : undefined;
+      const storyPointsValue = task.storyPoints.trim() ? Number(task.storyPoints) : undefined;
+      const cleanStoryPoints =
+        storyPointsValue !== undefined && !Number.isNaN(storyPointsValue) ? storyPointsValue : undefined;
       const dependencies = task.dependsText
         .split(",")
         .map((entry) => entry.trim())
@@ -627,7 +853,9 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
         type: task.type,
         estimated_hours: cleanEstimated,
         billable: task.billable,
-        leader_id: task.leaderId.trim() ? task.leaderId.trim() : undefined
+        leader_id: task.leaderId.trim() ? task.leaderId.trim() : undefined,
+        story_points: cleanStoryPoints,
+        priority: task.priority
       };
     });
 
@@ -749,6 +977,145 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
               </div>
             </div>
 
+            {agileSummary ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: "1rem",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                  margin: "1.5rem 0"
+                }}
+              >
+                <div
+                  style={{
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "0.75rem",
+                    padding: "1rem",
+                    background: "#f8fafc"
+                  }}
+                >
+                  <h4 style={{ margin: "0 0 0.5rem 0" }}>Active sprint</h4>
+                  {activeSprintDetails ? (
+                    <>
+                      <div style={{ fontWeight: 600 }}>{activeSprintDetails.sprint.name}</div>
+                      <p className="text-muted" style={{ margin: "0.25rem 0" }}>
+                        {formatSprintRange(activeSprintDetails.sprint)}
+                      </p>
+                      <div style={{ margin: "0.5rem 0" }}>
+                        <div style={{ fontSize: "0.9rem", fontWeight: 600 }}>{sprintProgress}% complete</div>
+                        <div
+                          style={{
+                            height: "8px",
+                            background: "#e2e8f0",
+                            borderRadius: "999px",
+                            overflow: "hidden",
+                            marginTop: "0.35rem"
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${sprintProgress}%`,
+                              background: "#6366f1",
+                              height: "100%"
+                            }}
+                          />
+                        </div>
+                        <p className="text-muted" style={{ margin: "0.35rem 0 0 0" }}>
+                          {activeSprintDetails.completed.toFixed(1)} / {activeSprintDetails.committed.toFixed(1)} pts
+                        </p>
+                      </div>
+                      {activeSprintDetails.sprint.focus_areas.length ? (
+                        <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                          Focus: {activeSprintDetails.sprint.focus_areas.join(", ")}
+                        </p>
+                      ) : null}
+                      {agileSummary.upcomingSprints.length ? (
+                        <div style={{ marginTop: "0.75rem" }}>
+                          <span style={{ fontWeight: 600, fontSize: "0.85rem" }}>Upcoming</span>
+                          <ul className="plain-list" style={{ margin: "0.25rem 0 0 0" }}>
+                            {agileSummary.upcomingSprints.slice(0, 2).map((sprint) => (
+                              <li key={sprint.id}>
+                                <strong>{sprint.name}</strong>
+                                <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+                                  {formatSprintRange(sprint)}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <p className="text-muted" style={{ margin: 0 }}>
+                      No active sprint scheduled.
+                    </p>
+                  )}
+                </div>
+                <div
+                  style={{
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "0.75rem",
+                    padding: "1rem",
+                    background: "#f8fafc"
+                  }}
+                >
+                  <h4 style={{ margin: "0 0 0.5rem 0" }}>Agile delivery metrics</h4>
+                  <div className="definition-list" style={{ marginBottom: "0.75rem" }}>
+                    <div>
+                      <dt>Total story points</dt>
+                      <dd>{agileSummary.totalPoints.toFixed(1)}</dd>
+                    </div>
+                    <div>
+                      <dt>Completed</dt>
+                      <dd>{agileSummary.completedPoints.toFixed(1)}</dd>
+                    </div>
+                    <div>
+                      <dt>Remaining</dt>
+                      <dd>{agileSummary.remainingPoints.toFixed(1)}</dd>
+                    </div>
+                    <div>
+                      <dt>Velocity</dt>
+                      <dd>{velocityLabel}</dd>
+                    </div>
+                    <div>
+                      <dt>Forecast completion</dt>
+                      <dd>{forecastLabel}</dd>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gap: "0.75rem" }}>
+                    <div>
+                      <h5 style={{ margin: "0 0 0.35rem 0", fontSize: "0.9rem" }}>Backlog by status</h5>
+                      <ul className="plain-list" style={{ margin: 0 }}>
+                        {backlogStatusEntries.map(({ status, count }) => (
+                          <li key={status} style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>{formatLabel(status)}</span>
+                            <span>{count}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <h5 style={{ margin: "0 0 0.35rem 0", fontSize: "0.9rem" }}>Backlog by priority</h5>
+                      <ul className="plain-list" style={{ margin: 0 }}>
+                        {backlogPriorityEntries.map(({ priority, count }) => (
+                          <li key={priority} style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>{formatLabel(priority)}</span>
+                            <span>{count}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <h5 style={{ margin: "0 0 0.35rem 0", fontSize: "0.9rem" }}>Unscheduled backlog</h5>
+                      <p style={{ margin: 0 }}>
+                        {agileSummary.unscheduled} task{agileSummary.unscheduled === 1 ? "" : "s"} without a sprint
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             {projectLoading ? <p className="text-muted">Refreshing project data…</p> : null}
             {projectMessage ? <div className="form-feedback success">{projectMessage}</div> : null}
             {projectError ? <div className="form-feedback error">{projectError}</div> : null}
@@ -858,6 +1225,9 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                         <th>Task</th>
                         <th>Status</th>
                         <th>Type</th>
+                        <th>Priority</th>
+                        <th>Story Points</th>
+                        <th>Sprint</th>
                         <th>Leader</th>
                         <th>Dependencies</th>
                         <th>Start</th>
@@ -870,6 +1240,7 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                         const dependencyNames = task.dependencies
                           .map((dependencyId) => dependencyLookup[dependencyId])
                           .filter(Boolean);
+                        const sprintInfo = task.sprint_id ? sprintLookup[task.sprint_id] : undefined;
                         return (
                           <tr key={task.id}>
                             <td>
@@ -907,6 +1278,56 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                                   </option>
                                 ))}
                               </select>
+                            </td>
+                            <td>
+                              <select
+                                value={edit?.priority ?? "medium"}
+                                onChange={(event) =>
+                                  handleTaskEditChange(
+                                    task.id,
+                                    "priority",
+                                    normalizeTaskPriority(event.target.value)
+                                  )
+                                }
+                              >
+                                {taskPriorityOptions.map((priority) => (
+                                  <option key={priority} value={priority}>
+                                    {formatLabel(priority)}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                value={edit?.story_points ?? ""}
+                                onChange={(event) =>
+                                  handleTaskEditChange(task.id, "story_points", event.target.value)
+                                }
+                                placeholder="e.g. 5"
+                              />
+                            </td>
+                            <td>
+                              <select
+                                value={edit?.sprint_id ?? ""}
+                                onChange={(event) =>
+                                  handleTaskEditChange(task.id, "sprint_id", event.target.value)
+                                }
+                              >
+                                <option value="">Backlog</option>
+                                {sortedSprints.map((sprint) => (
+                                  <option key={sprint.id} value={sprint.id}>
+                                    {sprint.name}
+                                  </option>
+                                ))}
+                              </select>
+                              {sprintInfo ? (
+                                <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+                                  {formatSprintRange(sprintInfo)}
+                                </div>
+                              ) : null}
                             </td>
                             <td>
                               <input
@@ -1111,6 +1532,21 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                     </select>
                   </label>
                   <label>
+                    Priority
+                    <select
+                      value={task.priority}
+                      onChange={(event) =>
+                        handleTemplateTaskChange(index, "priority", normalizeTaskPriority(event.target.value))
+                      }
+                    >
+                      {taskPriorityOptions.map((priority) => (
+                        <option key={priority} value={priority}>
+                          {formatLabel(priority)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
                     Depends On
                     <input
                       value={task.dependsText}
@@ -1125,6 +1561,16 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                       min="0"
                       value={task.estimatedHours}
                       onChange={(event) => handleTemplateTaskChange(index, "estimatedHours", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Story Points
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={task.storyPoints}
+                      onChange={(event) => handleTemplateTaskChange(index, "storyPoints", event.target.value)}
                     />
                   </label>
                   <label>

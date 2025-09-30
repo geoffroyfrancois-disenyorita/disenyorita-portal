@@ -23,6 +23,7 @@ This repository now ships with a working proof-of-concept. The FastAPI backend e
 - Resource scheduling, capacity heatmaps, billable vs. non-billable hours.
 - Automated workflows (onboarding sequences, deliverable approvals, QA checklists).
 - Time tracking (manual entry, timers) tied to tasks and billing.
+- Agile metrics with sprint velocity, story points, backlog health, and priority scoring to guide project manager decisions.
 
 ### 4. Support Desk & Communications
 - Omni-channel inbox (email via IMAP/SMTP, integrated social APIs, in-portal chat).

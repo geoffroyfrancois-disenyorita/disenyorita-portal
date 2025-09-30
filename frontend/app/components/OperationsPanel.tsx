@@ -122,17 +122,24 @@ export async function OperationsPanel(): Promise<JSX.Element> {
                         {project.health.replace("_", " ")}
                       </span>
                     </div>
+                  <p className="text-muted" style={{ margin: 0 }}>
+                    {project.client_name ?? "Unassigned client"} • {project.late_tasks} late task{project.late_tasks === 1 ? "" : "s"}
+                    {project.next_milestone_title
+                      ? ` • Next milestone "${project.next_milestone_title}" on ${formatDate(project.next_milestone_due ?? "")}`
+                      : ""}
+                  </p>
+                  {project.active_sprint_name ? (
                     <p className="text-muted" style={{ margin: 0 }}>
-                      {project.client_name ?? "Unassigned client"} • {project.late_tasks} late task{project.late_tasks === 1 ? "" : "s"}
-                      {project.next_milestone_title
-                        ? ` • Next milestone "${project.next_milestone_title}" on ${formatDate(project.next_milestone_due ?? "")}`
-                        : ""}
+                      Sprint {project.active_sprint_name} — {Math.round((project.sprint_completed_points ?? 0) * 10) / 10}/
+                      {Math.round((project.sprint_committed_points ?? 0) * 10) / 10} pts
+                      {project.velocity ? ` • Velocity ${Math.round(project.velocity * 10) / 10} pts/sprint` : ""}
                     </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
           <div>
             <h4 style={{ margin: "0 0 0.5rem 0" }}>Monitoring incidents</h4>
             {snapshot.monitoring_incidents.length === 0 ? (

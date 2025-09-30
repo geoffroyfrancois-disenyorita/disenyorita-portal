@@ -40,11 +40,14 @@ from ..schemas.projects import (
     ProjectTemplateType,
     ProjectTracker,
     ProjectUpdateRequest,
+    Sprint,
+    SprintStatus,
     Task,
     TaskAlert,
     TaskAlertSeverity,
     TaskNotification,
     TaskNotificationType,
+    TaskPriority,
     TaskStatus,
     TaskTimelineEntry,
     TaskType,
@@ -181,20 +184,122 @@ class InMemoryStore:
             self.clients[client.id] = client
 
         # Seed projects
+        sprint_history = Sprint(
+            name="Sprint 4 – Hospitality Foundations",
+            status=SprintStatus.COMPLETED,
+            start_date=now - timedelta(days=28),
+            end_date=now - timedelta(days=14),
+            committed_points=32,
+            completed_points=30,
+            velocity=30,
+            focus_areas=["Booking flows", "Information architecture"],
+        )
+        active_sprint = Sprint(
+            name="Sprint 5 – Guest Experience Upgrade",
+            status=SprintStatus.ACTIVE,
+            start_date=now - timedelta(days=7),
+            end_date=now + timedelta(days=7),
+            committed_points=36,
+            completed_points=18,
+            focus_areas=["Mobile booking", "Guest communications"],
+        )
+        upcoming_sprint = Sprint(
+            name="Sprint 6 – Conversion Experiments",
+            status=SprintStatus.PLANNING,
+            start_date=now + timedelta(days=8),
+            end_date=now + timedelta(days=22),
+            committed_points=34,
+            focus_areas=["Upsell flows", "Personalized offers"],
+        )
+
         discovery_task = Task(
             name="Discovery Workshop",
             status=TaskStatus.DONE,
             logged_hours=6,
-            start_date=now - timedelta(days=18),
-            due_date=now - timedelta(days=12),
+            start_date=now - timedelta(days=32),
+            due_date=now - timedelta(days=27),
+            story_points=5,
+            priority=TaskPriority.HIGH,
+            sprint_id=sprint_history.id,
+        )
+        architecture_task = Task(
+            name="Information Architecture",
+            status=TaskStatus.DONE,
+            estimated_hours=16,
+            logged_hours=14,
+            start_date=now - timedelta(days=26),
+            due_date=now - timedelta(days=20),
+            story_points=5,
+            priority=TaskPriority.HIGH,
+            sprint_id=sprint_history.id,
+            dependencies=[discovery_task.id],
         )
         ux_task = Task(
             name="UX Wireframes",
-            status=TaskStatus.IN_PROGRESS,
+            status=TaskStatus.DONE,
             estimated_hours=30,
             logged_hours=12,
-            start_date=now - timedelta(days=9),
-            due_date=now - timedelta(days=2),
+            start_date=now - timedelta(days=14),
+            due_date=now - timedelta(days=1),
+            story_points=8,
+            priority=TaskPriority.HIGH,
+            sprint_id=active_sprint.id,
+            dependencies=[architecture_task.id],
+        )
+        integration_task = Task(
+            name="Booking Engine Integration",
+            status=TaskStatus.IN_PROGRESS,
+            estimated_hours=28,
+            logged_hours=10,
+            start_date=now - timedelta(days=6),
+            due_date=now + timedelta(days=4),
+            story_points=8,
+            priority=TaskPriority.CRITICAL,
+            sprint_id=active_sprint.id,
+            dependencies=[ux_task.id],
+        )
+        cms_task = Task(
+            name="Hospitality CMS Enhancements",
+            status=TaskStatus.TODO,
+            estimated_hours=18,
+            start_date=now - timedelta(days=2),
+            due_date=now + timedelta(days=6),
+            story_points=5,
+            priority=TaskPriority.HIGH,
+            sprint_id=active_sprint.id,
+            dependencies=[integration_task.id],
+        )
+        accessibility_task = Task(
+            name="Accessibility Review",
+            status=TaskStatus.REVIEW,
+            estimated_hours=10,
+            logged_hours=6,
+            start_date=now - timedelta(days=5),
+            due_date=now - timedelta(days=1),
+            story_points=3,
+            priority=TaskPriority.HIGH,
+            sprint_id=active_sprint.id,
+            dependencies=[integration_task.id],
+        )
+        qa_task = Task(
+            name="Regression QA",
+            status=TaskStatus.TODO,
+            estimated_hours=20,
+            start_date=now + timedelta(days=1),
+            due_date=now + timedelta(days=10),
+            story_points=5,
+            priority=TaskPriority.MEDIUM,
+            sprint_id=upcoming_sprint.id,
+            dependencies=[cms_task.id, accessibility_task.id],
+        )
+        experiment_task = Task(
+            name="Personalized Offers Experiment",
+            status=TaskStatus.TODO,
+            estimated_hours=12,
+            story_points=4,
+            priority=TaskPriority.MEDIUM,
+            sprint_id=upcoming_sprint.id,
+            dependencies=[ux_task.id],
         )
         audit_task = Task(
             name="Operational Audit",
@@ -203,6 +308,8 @@ class InMemoryStore:
             logged_hours=18,
             start_date=now - timedelta(days=4),
             due_date=now + timedelta(days=3),
+            story_points=10,
+            priority=TaskPriority.HIGH,
         )
         website_project = Project(
             name="Sunset Boutique Website Refresh",
@@ -216,7 +323,18 @@ class InMemoryStore:
             milestones=[
                 Milestone(title="Launch MVP", due_date=now + timedelta(days=14)),
             ],
-            tasks=[discovery_task, ux_task],
+            tasks=[
+                discovery_task,
+                architecture_task,
+                ux_task,
+                integration_task,
+                cms_task,
+                accessibility_task,
+                qa_task,
+                experiment_task,
+            ],
+            sprints=[sprint_history, active_sprint, upcoming_sprint],
+            active_sprint_id=active_sprint.id,
         )
         audit_project = Project(
             name="Harborfront Hotel Audit",
@@ -1029,6 +1147,14 @@ class InMemoryStore:
             support=support_snapshot,
         )
 
+    @staticmethod
+    def _task_story_points(task: Task) -> float:
+        if task.story_points is not None:
+            return max(task.story_points, 0.0)
+        if task.estimated_hours:
+            return max(round(task.estimated_hours / 4.0, 1), 1.0)
+        return 1.0
+
     def project_portfolio(self) -> List[ProjectProgress]:
         now = datetime.utcnow()
         portfolio: List[ProjectProgress] = []
@@ -1040,7 +1166,22 @@ class InMemoryStore:
                 for task in project.tasks
                 if task.due_date and task.due_date < now and task.status != TaskStatus.DONE
             )
-            progress = (completed_tasks / total_tasks * 100.0) if total_tasks else 0.0
+            total_story_points = sum(self._task_story_points(task) for task in project.tasks)
+            completed_story_points = sum(
+                self._task_story_points(task)
+                for task in project.tasks
+                if task.status == TaskStatus.DONE
+            )
+            story_point_progress = (
+                (completed_story_points / total_story_points) * 100.0
+                if total_story_points
+                else 0.0
+            )
+            progress = (
+                (completed_tasks / total_tasks) * 100.0
+                if total_tasks
+                else story_point_progress
+            )
             upcoming_milestones = sorted(
                 (milestone for milestone in project.milestones if not milestone.completed),
                 key=lambda milestone: milestone.due_date,
@@ -1051,6 +1192,57 @@ class InMemoryStore:
                 if project.client_id in self.clients
                 else None
             )
+            active_sprint = None
+            if project.active_sprint_id:
+                active_sprint = next(
+                    (sprint for sprint in project.sprints if sprint.id == project.active_sprint_id),
+                    None,
+                )
+            if not active_sprint:
+                active_sprint = next(
+                    (sprint for sprint in project.sprints if sprint.status == SprintStatus.ACTIVE),
+                    None,
+                )
+            sprint_committed = None
+            sprint_completed = None
+            if active_sprint:
+                sprint_tasks = [
+                    task for task in project.tasks if task.sprint_id == active_sprint.id
+                ]
+                sprint_committed = sum(self._task_story_points(task) for task in sprint_tasks)
+                sprint_completed = sum(
+                    self._task_story_points(task)
+                    for task in sprint_tasks
+                    if task.status == TaskStatus.DONE
+                )
+            completed_sprints = [
+                sprint
+                for sprint in project.sprints
+                if sprint.status == SprintStatus.COMPLETED and sprint.completed_points
+            ]
+            velocity = None
+            if completed_sprints:
+                velocity = sum(sprint.completed_points for sprint in completed_sprints) / len(
+                    completed_sprints
+                )
+            forecast_completion = None
+            remaining_points = max(total_story_points - completed_story_points, 0.0)
+            if velocity and velocity > 0:
+                baseline_end = (
+                    active_sprint.end_date
+                    if active_sprint and active_sprint.end_date
+                    else now
+                )
+                average_duration_days = (
+                    sum(
+                        max((sprint.end_date - sprint.start_date).days, 7)
+                        for sprint in completed_sprints
+                    )
+                    / len(completed_sprints)
+                )
+                average_duration_days = max(average_duration_days, 7)
+                projected_days = average_duration_days * (remaining_points / velocity)
+                forecast_completion = baseline_end + timedelta(days=projected_days)
             if project.status == ProjectStatus.COMPLETED:
                 health = ProjectHealth.COMPLETED
             elif project.status == ProjectStatus.ON_HOLD:
@@ -1074,6 +1266,15 @@ class InMemoryStore:
                     next_milestone=next_milestone,
                     health=health,
                     updated_at=project.updated_at,
+                    total_story_points=total_story_points,
+                    completed_story_points=completed_story_points,
+                    active_sprint_id=active_sprint.id if active_sprint else None,
+                    active_sprint_name=active_sprint.name if active_sprint else None,
+                    sprint_committed_points=sprint_committed,
+                    sprint_completed_points=sprint_completed,
+                    velocity=velocity,
+                    forecast_completion=forecast_completion,
+                    story_point_progress=story_point_progress,
                 )
             )
         portfolio.sort(key=lambda record: record.updated_at, reverse=True)
@@ -1164,6 +1365,85 @@ class InMemoryStore:
         ]
         notifications.sort(key=lambda item: item.triggered_at, reverse=True)
 
+        total_story_points = sum(self._task_story_points(task) for task in project.tasks)
+        completed_story_points = sum(
+            self._task_story_points(task)
+            for task in project.tasks
+            if task.status == TaskStatus.DONE
+        )
+        active_sprint = None
+        if project.active_sprint_id:
+            active_sprint = next(
+                (sprint for sprint in project.sprints if sprint.id == project.active_sprint_id),
+                None,
+            )
+        if not active_sprint:
+            active_sprint = next(
+                (sprint for sprint in project.sprints if sprint.status == SprintStatus.ACTIVE),
+                None,
+            )
+        completed_sprints = [
+            sprint
+            for sprint in project.sprints
+            if sprint.status == SprintStatus.COMPLETED and sprint.completed_points
+        ]
+        velocity = None
+        if completed_sprints:
+            velocity = sum(sprint.completed_points for sprint in completed_sprints) / len(
+                completed_sprints
+            )
+        forecast_completion = None
+        remaining_points = max(total_story_points - completed_story_points, 0.0)
+        if velocity and velocity > 0:
+            baseline_end = (
+                active_sprint.end_date
+                if active_sprint and active_sprint.end_date
+                else now
+            )
+            average_duration_days = (
+                sum(
+                    max((sprint.end_date - sprint.start_date).days, 7)
+                    for sprint in completed_sprints
+                )
+                / len(completed_sprints)
+            )
+            average_duration_days = max(average_duration_days, 7)
+            projected_days = average_duration_days * (remaining_points / velocity)
+            forecast_completion = baseline_end + timedelta(days=projected_days)
+
+        active_sprint_snapshot = None
+        if active_sprint:
+            sprint_tasks = [task for task in project.tasks if task.sprint_id == active_sprint.id]
+            committed_points = sum(self._task_story_points(task) for task in sprint_tasks)
+            completed_points = sum(
+                self._task_story_points(task)
+                for task in sprint_tasks
+                if task.status == TaskStatus.DONE
+            )
+            active_sprint_snapshot = active_sprint.copy(
+                update={
+                    "committed_points": committed_points,
+                    "completed_points": completed_points,
+                }
+            )
+
+        upcoming_sprints = [
+            sprint
+            for sprint in sorted(project.sprints, key=lambda sprint: sprint.start_date)
+            if sprint.status in {SprintStatus.PLANNING, SprintStatus.ACTIVE}
+            and (not active_sprint or sprint.id != active_sprint.id)
+        ]
+        backlog_summary = {
+            "status": {status.value: 0 for status in TaskStatus},
+            "priority": {priority.value: 0 for priority in TaskPriority},
+            "unscheduled": 0,
+        }
+        for task in project.tasks:
+            backlog_summary["status"][task.status.value] += 1
+            backlog_summary["priority"][task.priority.value] += 1
+            if not task.sprint_id:
+                backlog_summary["unscheduled"] += 1
+
         return ProjectTracker(
             project_id=project.id,
             project_name=project.name,
@@ -1174,6 +1454,13 @@ class InMemoryStore:
             tasks=timeline,
             alerts=alerts,
             notifications=notifications,
+            active_sprint=active_sprint_snapshot,
+            upcoming_sprints=upcoming_sprints,
+            backlog_summary=backlog_summary,
+            total_story_points=total_story_points,
+            completed_story_points=completed_story_points,
+            velocity=velocity,
+            forecast_completion=forecast_completion,
         )
 
     def project_summary(self) -> ProjectSummary:
@@ -1654,6 +1941,10 @@ class InMemoryStore:
                     late_tasks=project.late_tasks,
                     next_milestone_title=next_title,
                     next_milestone_due=next_due,
+                    active_sprint_name=project.active_sprint_name,
+                    sprint_committed_points=project.sprint_committed_points,
+                    sprint_completed_points=project.sprint_completed_points,
+                    velocity=project.velocity,
                 )
             )
         at_risk_projects.sort(
