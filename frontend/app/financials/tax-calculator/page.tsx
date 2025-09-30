@@ -7,6 +7,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
   DeductionOpportunity,
+  FilingObligation,
+  TaxBusinessProfile,
   TaxComputationPayload,
   TaxComputationResult,
   TaxEntryInput,
@@ -23,24 +25,28 @@ function generateId(): string {
 }
 
 const defaultIncomes: Entry[] = [
-  { id: generateId(), label: "Service retainers", amount: 1_800_000 },
-  { id: generateId(), label: "Consulting projects", amount: 420_000 }
+  { id: generateId(), label: "Brand strategy retainers", amount: 1_350_000 },
+  { id: generateId(), label: "Campaign launch packages", amount: 420_000 },
+  { id: generateId(), label: "Online course sales", amount: 210_000 }
 ];
 
 const defaultCostOfSales: Entry[] = [
-  { id: generateId(), label: "Production subcontractors", amount: 360_000 },
-  { id: generateId(), label: "Materials & hosting", amount: 95_000 }
+  { id: generateId(), label: "Creative collaborators", amount: 280_000 },
+  { id: generateId(), label: "Printing & production", amount: 90_000 },
+  { id: generateId(), label: "Marketplace & payment fees", amount: 52_000 }
 ];
 
 const defaultOperatingExpenses: Entry[] = [
-  { id: generateId(), label: "Studio rent", amount: 180_000 },
-  { id: generateId(), label: "Team salaries", amount: 420_000 },
-  { id: generateId(), label: "Utilities & internet", amount: 48_000 }
+  { id: generateId(), label: "Coworking membership", amount: 120_000 },
+  { id: generateId(), label: "Software subscriptions", amount: 96_000 },
+  { id: generateId(), label: "Marketing automation tools", amount: 132_000 }
 ];
 
 const defaultDeductions: Entry[] = [
+  { id: generateId(), label: "SSS", amount: 24_000 },
   { id: generateId(), label: "PhilHealth", amount: 36_000 },
-  { id: generateId(), label: "Pag-IBIG", amount: 18_000 }
+  { id: generateId(), label: "Pag-IBIG", amount: 18_000 },
+  { id: generateId(), label: "PERA", amount: 48_000 }
 ];
 
 function formatCurrency(value: number): string {
@@ -57,6 +63,57 @@ function sanitizeEntries(entries: Entry[]): TaxEntryInput[] {
     label: entry.label.trim() || "Untitled",
     amount: Number.isFinite(entry.amount) ? Math.max(entry.amount, 0) : 0
   }));
+}
+
+function parseISODate(value: string): Date {
+  return new Date(`${value}T00:00:00`);
+}
+
+function formatDueDate(value: string): string {
+  return parseISODate(value).toLocaleDateString("en-PH", {
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  });
+}
+
+function describeDueDate(value: string): { label: string; color: string } {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = parseISODate(value);
+  const diffMs = due.getTime() - today.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    const overdue = Math.abs(diffDays);
+    return {
+      label: `Overdue by ${overdue} day${overdue === 1 ? "" : "s"}`,
+      color: "#fb7185"
+    };
+  }
+
+  if (diffDays === 0) {
+    return { label: "Due today", color: "#f97316" };
+  }
+
+  if (diffDays <= 14) {
+    return {
+      label: `Due in ${diffDays} day${diffDays === 1 ? "" : "s"}`,
+      color: "#f97316"
+    };
+  }
+
+  if (diffDays <= 45) {
+    return {
+      label: `Due in ${diffDays} days`,
+      color: "#facc15"
+    };
+  }
+
+  return {
+    label: `Due in ${diffDays} days`,
+    color: "#22c55e"
+  };
 }
 
 function EntryList({
@@ -157,6 +214,8 @@ export default function TaxCalculatorPage(): JSX.Element {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [profileMetadata, setProfileMetadata] = useState<TaxProfile | null>(null);
+  const [businessProfile, setBusinessProfile] = useState<TaxBusinessProfile | null>(null);
+  const [filingCalendar, setFilingCalendar] = useState<FilingObligation[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -184,6 +243,8 @@ export default function TaxCalculatorPage(): JSX.Element {
         setVatRegistered(snapshot.vat_registered);
         setCalculation(snapshot.computed);
         setProfileMetadata(snapshot);
+        setBusinessProfile(snapshot.business_profile);
+        setFilingCalendar(snapshot.filing_calendar);
       } catch (thrown) {
         console.error(thrown);
       }
@@ -272,11 +333,12 @@ export default function TaxCalculatorPage(): JSX.Element {
         ← Back to financial control
       </Link>
       <h2 className="section-title" style={{ marginTop: "1.5rem" }}>
-        Philippines Individual Company Tax Automation
+        Philippines Freelance Tax Automation for Branding Consultants
       </h2>
       <p className="text-muted" style={{ maxWidth: "720px" }}>
-        Capture every peso of revenue, expenses, and allowable deductions to automate Philippine income tax, percentage tax,
-        and VAT projections. Use the planner to stay compliant with TRAIN law while maximizing cash for growth.
+        Built for an individual taxpayer registered under PSIC 82212 (sales & marketing) with secondary PSIC 47913 (retail via
+        internet). Capture every peso of revenue, expenses, and allowable deductions to automate TRAIN-law income tax,
+        percentage tax, and VAT projections while staying audit ready.
       </p>
       {profileMetadata && (
         <p className="text-muted" style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
@@ -288,10 +350,125 @@ export default function TaxCalculatorPage(): JSX.Element {
         </p>
       )}
 
+      {businessProfile && (
+        <div
+          className="card"
+          style={{ marginTop: "2rem", display: "flex", flexDirection: "column", gap: "1rem" }}
+        >
+          <h3 style={{ margin: 0 }}>Registered business profile</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem" }}>
+            <div>
+              <p className="text-muted" style={{ margin: 0 }}>Taxpayer type</p>
+              <p style={{ margin: "0.25rem 0", fontWeight: 600 }}>{businessProfile.taxpayer_type}</p>
+              <p className="text-muted" style={{ margin: 0 }}>Registration</p>
+              <p style={{ margin: "0.25rem 0" }}>{businessProfile.registration_type}</p>
+            </div>
+            <div>
+              <p className="text-muted" style={{ margin: 0 }}>Primary PSIC {businessProfile.psic_primary_code}</p>
+              <p style={{ margin: "0.25rem 0", fontWeight: 600 }}>{businessProfile.primary_line_of_business}</p>
+              <p className="text-muted" style={{ margin: 0 }}>{businessProfile.psic_primary_description}</p>
+            </div>
+            <div>
+              <p className="text-muted" style={{ margin: 0 }}>Secondary PSIC {businessProfile.psic_secondary_code}</p>
+              <p style={{ margin: "0.25rem 0", fontWeight: 600 }}>{businessProfile.secondary_line_of_business}</p>
+              <p className="text-muted" style={{ margin: 0 }}>{businessProfile.psic_secondary_description}</p>
+            </div>
+          </div>
+          {businessProfile.filing_frequencies.length > 0 && (
+            <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#475569" }}>
+              {businessProfile.filing_frequencies.map((item) => (
+                <li key={item} style={{ marginBottom: "0.25rem" }}>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          )}
+          {businessProfile.compliance_notes.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.5rem",
+                padding: "0.75rem 1rem",
+                borderRadius: "0.75rem",
+                background: "rgba(99, 102, 241, 0.08)",
+              }}
+            >
+              <strong style={{ color: "#312e81", fontSize: "0.9rem" }}>Compliance reminders</strong>
+              <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#3730a3" }}>
+                {businessProfile.compliance_notes.map((note) => (
+                  <li key={note} style={{ marginBottom: "0.25rem" }}>
+                    {note}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {filingCalendar.length > 0 && (
+        <div
+          className="card"
+          style={{ marginTop: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}
+        >
+          <h3 style={{ margin: 0 }}>Automated filing calendar</h3>
+          <p className="text-muted" style={{ margin: 0 }}>
+            Track income tax and percentage tax obligations across the year with reminders before every statutory deadline.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {filingCalendar.map((obligation) => {
+              const status = describeDueDate(obligation.due_date);
+              const badgeBackground = `${status.color}22`;
+              return (
+                <div
+                  key={`${obligation.form}-${obligation.period}`}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.25rem",
+                    padding: "0.75rem 1rem",
+                    borderRadius: "0.75rem",
+                    border: "1px solid rgba(148,163,184,0.35)",
+                    background: "rgba(255,255,255,0.7)"
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+                    <div>
+                      <strong>{obligation.form}</strong>
+                      <p className="text-muted" style={{ margin: 0 }}>
+                        {obligation.period} · {obligation.frequency}
+                      </p>
+                    </div>
+                    <span
+                      style={{
+                        padding: "0.25rem 0.75rem",
+                        borderRadius: "999px",
+                        background: badgeBackground,
+                        color: status.color,
+                        fontSize: "0.8rem",
+                        fontWeight: 600,
+                        whiteSpace: "nowrap"
+                      }}
+                    >
+                      {status.label}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    <span style={{ fontWeight: 600 }}>{formatDueDate(obligation.due_date)}</span>
+                    <span className="text-muted">{obligation.description}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="grid-two" style={{ marginTop: "2rem", gap: "1.5rem" }}>
         <EntryList
           title="Income sources"
-          description="List all annual revenue streams including retainers, project work, and product sales."
+          description="List all annual revenue streams including branding retainers, launch projects, and digital product sales."
           entries={incomes}
           onChange={handleEntryChange(setIncomes)}
           onAdd={handleEntryAdd(setIncomes)}
@@ -299,7 +476,7 @@ export default function TaxCalculatorPage(): JSX.Element {
         />
         <EntryList
           title="Direct costs"
-          description="Capture cost of sales such as subcontractors, production, and other delivery expenses."
+          description="Capture cost of sales such as creative collaborators, production, and ecommerce delivery expenses."
           entries={costOfSales}
           onChange={handleEntryChange(setCostOfSales)}
           onAdd={handleEntryAdd(setCostOfSales)}
@@ -310,7 +487,7 @@ export default function TaxCalculatorPage(): JSX.Element {
       <div className="grid-two" style={{ marginTop: "1.5rem", gap: "1.5rem" }}>
         <EntryList
           title="Operating expenses"
-          description="Administrative overhead like rent, salaries, utilities, insurance, and marketing."
+          description="Administrative overhead like coworking, software, automation tools, and continuing education."
           entries={operatingExpenses}
           onChange={handleEntryChange(setOperatingExpenses)}
           onAdd={handleEntryAdd(setOperatingExpenses)}
@@ -318,7 +495,7 @@ export default function TaxCalculatorPage(): JSX.Element {
         />
         <EntryList
           title="Allowable deductions"
-          description="Government contributions and other deductions that lower taxable income."
+          description="Government contributions and personal retirement deductions that lower taxable income."
           entries={otherDeductions}
           onChange={handleEntryChange(setOtherDeductions)}
           onAdd={handleEntryAdd(setOtherDeductions)}

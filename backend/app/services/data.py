@@ -58,6 +58,7 @@ from ..schemas.financials import (
     Currency,
     DeductionOpportunity,
     Expense,
+    FilingObligation,
     FinancialSummary,
     Invoice,
     InvoiceStatus,
@@ -66,6 +67,7 @@ from ..schemas.financials import (
     Payment,
     PricingSuggestion,
     ProjectFinancials,
+    TaxBusinessProfile,
     TaxComputationRequest,
     TaxComputationResponse,
     TaxEntry,
@@ -126,13 +128,15 @@ class InMemoryStore:
         self.automation_broadcasts: List[str] = []
         self.task_notifications: List[TaskNotification] = []
         self.operating_expense_baselines: Dict[str, float] = {
-            "Studio rent": 180_000.0 / 12,
-            "Team salaries": 780_000.0 / 12,
-            "Utilities & internet": 54_000.0 / 12,
+            "Coworking membership": 96_000.0 / 12,
+            "Software subscriptions": 84_000.0 / 12,
+            "Marketing automation tools": 108_000.0 / 12,
         }
         self.statutory_contributions: Dict[str, float] = {
             "SSS": 24_000.0 / 12,
             "PhilHealth": 36_000.0 / 12,
+            "Pag-IBIG": 18_000.0 / 12,
+            "PERA": 48_000.0 / 12,
         }
         self.capacity_overrides: Dict[str, Tuple[float, float]] = {}
         self.tax_configuration: Dict[str, float | bool] = {
@@ -358,14 +362,19 @@ class InMemoryStore:
             issue_date=now - timedelta(days=10),
             due_date=now + timedelta(days=20),
             items=[
-                LineItem(description="UX Design", quantity=1, unit_price=6000, total=6000),
-                LineItem(description="Development Sprint", quantity=1, unit_price=4000, total=4000),
+                LineItem(description="Brand strategy sprint", quantity=1, unit_price=6200, total=6200),
+                LineItem(description="E-commerce launch playbook", quantity=1, unit_price=3800, total=3800),
             ],
         )
         self.invoices[invoice.id] = invoice
         payment = Payment(invoice_id=invoice.id, amount=5000, received_at=now - timedelta(days=3), method="stripe")
         self.payments[payment.id] = payment
-        expense = Expense(project_id=website_project.id, category="Software", amount=320, incurred_at=now - timedelta(days=4))
+        expense = Expense(
+            project_id=website_project.id,
+            category="Marketplace fees",
+            amount=320,
+            incurred_at=now - timedelta(days=4),
+        )
         self.expenses[expense.id] = expense
 
         retainer_invoice = Invoice(
@@ -376,8 +385,8 @@ class InMemoryStore:
             issue_date=now - timedelta(days=32),
             due_date=now - timedelta(days=2),
             items=[
-                LineItem(description="On-site Audit", quantity=1, unit_price=5200, total=5200),
-                LineItem(description="Reporting & Analysis", quantity=1, unit_price=1800, total=1800),
+                LineItem(description="Brand refresh retainer", quantity=1, unit_price=5200, total=5200),
+                LineItem(description="Quarterly campaign oversight", quantity=1, unit_price=1800, total=1800),
             ],
         )
         self.invoices[retainer_invoice.id] = retainer_invoice
@@ -390,7 +399,7 @@ class InMemoryStore:
         self.payments[audit_payment.id] = audit_payment
         audit_expense = Expense(
             project_id=audit_project.id,
-            category="Travel",
+            category="Digital ads",
             amount=540,
             incurred_at=now - timedelta(days=6),
         )
@@ -1695,6 +1704,97 @@ class InMemoryStore:
 
         computation = self.calculate_tax(payload)
 
+        today = datetime.utcnow().date()
+
+        def upcoming_due(month: int, day: int) -> date:
+            due = date(today.year, month, day)
+            if due < today:
+                due = date(today.year + 1, month, day)
+            return due
+
+        annual_due = upcoming_due(4, 15)
+        filing_calendar: List[FilingObligation] = []
+
+        annual_forms: List[tuple[str, str]] = [
+            (
+                "BIR Form 1701",
+                "Annual income tax return for individuals earning from business or profession under graduated rates.",
+            ),
+            (
+                "BIR Form 1701A",
+                "Annual income tax return attachment for purely self-employed individuals under graduated rates.",
+            ),
+            (
+                "BIR Form 1701MS",
+                "Annual income tax return schedule for mixed income earners and summary of quarterly filings.",
+            ),
+        ]
+
+        for form, description in annual_forms:
+            filing_calendar.append(
+                FilingObligation(
+                    form=form,
+                    description=description,
+                    frequency="Annual",
+                    period=f"Tax year {annual_due.year}",
+                    due_date=annual_due,
+                )
+            )
+
+        quarter_schedule = [
+            ("Q1", 5, 15),
+            ("Q2", 8, 15),
+            ("Q3", 11, 15),
+        ]
+
+        quarter_forms: List[tuple[str, str]] = [
+            (
+                "BIR Form 1701Q",
+                "Quarterly income tax return for individuals earning from business or profession.",
+            ),
+            (
+                "BIR Form 2551Q",
+                "Quarterly percentage tax return for self-employed individuals not availing of the 8% flat rate.",
+            ),
+        ]
+
+        for quarter_label, month, day in quarter_schedule:
+            due = upcoming_due(month, day)
+            for form, description in quarter_forms:
+                filing_calendar.append(
+                    FilingObligation(
+                        form=form,
+                        description=description,
+                        frequency="Quarterly",
+                        period=f"{quarter_label} {due.year}",
+                        due_date=due,
+                    )
+                )
+
+        filing_calendar.sort(key=lambda obligation: obligation.due_date)
+
+        business_profile = TaxBusinessProfile(
+            taxpayer_type="Individual",
+            registration_type="Freelancer / Sole Proprietor",
+            psic_primary_code="82212",
+            psic_primary_description="Sales and marketing (including telemarketing) activities",
+            primary_line_of_business="Branding consultant",
+            psic_secondary_code="47913",
+            psic_secondary_description="Retail sale via internet",
+            secondary_line_of_business="Freelancer-led online sales",
+            filing_frequencies=[
+                "Annual income tax package (BIR Forms 1701 / 1701A / 1701MS) due every April 15.",
+                "Quarterly income tax (BIR Form 1701Q) due May 15, August 15, and November 15.",
+                "Quarterly percentage tax (BIR Form 2551Q) due May 15, August 15, and November 15 unless the 8% optional rate is elected.",
+            ],
+            compliance_notes=[
+                "File required tax returns even with no operations to avoid penalties.",
+                "Register manual books of accounts before the first applicable quarterly or annual filing deadline.",
+                "Update the RDO via BIR Form 1905 for any transfer, cessation, or registration changes.",
+                "Self-employed individuals under graduated rates must file BIR Form 2551Q each quarter unless properly opting into the 8% income tax.",
+            ],
+        )
+
         timestamps = [
             *[invoice.updated_at for invoice in self.invoices.values()],
             *[expense.updated_at for expense in self.expenses.values()],
@@ -1713,6 +1813,8 @@ class InMemoryStore:
             apply_percentage_tax=payload.apply_percentage_tax,
             percentage_tax_rate=payload.percentage_tax_rate,
             vat_registered=payload.vat_registered,
+            business_profile=business_profile,
+            filing_calendar=filing_calendar,
             last_updated=self._tax_profile_updated_at,
             source_summary={
                 "invoices": len(self.invoices),
@@ -1751,6 +1853,7 @@ class InMemoryStore:
             "sss": "Include SSS contributions made for the proprietor to lower taxable income.",
             "philhealth": "PhilHealth premiums qualify as allowable deductions when properly documented.",
             "pag-ibig": "Pag-IBIG savings and MP2 dividends may be deductible—keep official receipts ready.",
+            "pera": "Personal Equity and Retirement Account (PERA) contributions can be deducted up to statutory limits.",
             "depreciation": "Consider depreciating large equipment purchases instead of expensing them upfront.",
         }
         for keyword, message in statutory_categories.items():
@@ -1763,6 +1866,18 @@ class InMemoryStore:
                     category="operating expenses",
                     message="Operating expenses are below 20% of revenue. Review utilities, rent, and admin costs to ensure"
                     " everything is captured.",
+                )
+            )
+
+        has_online_sales = any(
+            "retail" in entry.label.lower() or "online" in entry.label.lower() for entry in request.incomes
+        )
+        if has_online_sales and gross_revenue > 0 and total_cost_of_sales / gross_revenue < 0.1:
+            deduction_opportunities.append(
+                DeductionOpportunity(
+                    category="marketplace fees",
+                    message="Online retail revenue detected. Track platform commissions and payment gateway charges as cost"
+                    " of sales to reduce taxable income.",
                 )
             )
 

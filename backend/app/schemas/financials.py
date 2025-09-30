@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Dict, List, Optional
 
@@ -117,6 +117,27 @@ class TaxComputationResponse(BaseModel):
     deduction_opportunities: List[DeductionOpportunity] = Field(default_factory=list)
 
 
+class TaxBusinessProfile(BaseModel):
+    taxpayer_type: str
+    registration_type: str
+    psic_primary_code: str
+    psic_primary_description: str
+    primary_line_of_business: str
+    psic_secondary_code: str
+    psic_secondary_description: str
+    secondary_line_of_business: str
+    filing_frequencies: List[str] = Field(default_factory=list)
+    compliance_notes: List[str] = Field(default_factory=list)
+
+
+class FilingObligation(BaseModel):
+    form: str
+    description: str
+    frequency: str
+    period: str
+    due_date: date
+
+
 class TaxProfile(BaseModel):
     incomes: List[TaxEntry] = Field(default_factory=list)
     cost_of_sales: List[TaxEntry] = Field(default_factory=list)
@@ -125,6 +146,8 @@ class TaxProfile(BaseModel):
     apply_percentage_tax: bool = True
     percentage_tax_rate: float = 3.0
     vat_registered: bool = False
+    business_profile: TaxBusinessProfile
+    filing_calendar: List[FilingObligation] = Field(default_factory=list)
     last_updated: datetime
     source_summary: Dict[str, int] = Field(default_factory=dict)
     computed: TaxComputationResponse
