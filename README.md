@@ -40,6 +40,8 @@ This repository now ships with a working proof-of-concept. The FastAPI backend e
 - **Quarterly tax maintenance**: update the TRAIN-law bracket table (`PH_TAX_BRACKETS`) and percentage/VAT logic in
   `backend/app/services/data.py` every quarter, then trigger a fresh automation digest snapshot to compare against archived
   filings.
+- **Freelancer tax automation**: Philippine individual branding consultant profile with PSIC 82212/47913 defaults, automated
+  filing calendar (1701/1701Q), and documentation reminders surfaced in `/financials/tax-calculator`.
 
 ### 6. HR & Resource Management
 - Employee/contractor profiles, skills matrix, certifications, onboarding flows.

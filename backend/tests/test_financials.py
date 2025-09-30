@@ -1,6 +1,29 @@
-from datetime import datetime
+from datetime import date, datetime
+import sys
+import typing
 
 import pytest
+
+if sys.version_info >= (3, 12):
+    _original_forward_ref_evaluate = typing.ForwardRef._evaluate  # type: ignore[attr-defined]
+
+    def _patched_forward_ref_evaluate(
+        self: typing.ForwardRef,  # type: ignore[type-arg]
+        globalns: dict[str, object] | None,
+        localns: dict[str, object] | None,
+        type_params: object | None = None,
+        *,
+        recursive_guard: set[tuple[typing.ForwardRef, tuple[object, ...]]] | None = None,
+    ):
+        guard = recursive_guard or set()
+        return _original_forward_ref_evaluate(self, globalns, localns, type_params, recursive_guard=guard)
+
+    typing.ForwardRef._evaluate = _patched_forward_ref_evaluate  # type: ignore[attr-defined]
+
+from pathlib import Path
+
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
 
@@ -42,6 +65,37 @@ def test_tax_computation_endpoint_returns_expected_totals() -> None:
     categories = {tip["category"] for tip in data["deduction_opportunities"]}
     assert "sss" in categories
     assert "pag-ibig" in categories
+
+
+def test_tax_profile_includes_business_context_and_calendar() -> None:
+    response = client.get("/api/v1/financials/tax/profile")
+    assert response.status_code == 200
+    data = response.json()
+
+    business = data["business_profile"]
+    assert business["taxpayer_type"] == "Individual"
+    assert business["psic_primary_code"] == "82212"
+    summary_text = " ".join(business["filing_frequencies"])
+    assert "1701" in summary_text
+    assert "1701A" in summary_text
+    assert "1701MS" in summary_text
+    assert "2551Q" in summary_text
+
+    notes = business.get("compliance_notes")
+    assert isinstance(notes, list) and len(notes) >= 4
+
+    calendar = data["filing_calendar"]
+    assert len(calendar) >= 9
+    due_dates = [date.fromisoformat(entry["due_date"]) for entry in calendar]
+    assert due_dates == sorted(due_dates)
+    forms = {entry["form"] for entry in calendar}
+    assert {
+        "BIR Form 1701",
+        "BIR Form 1701A",
+        "BIR Form 1701MS",
+        "BIR Form 1701Q",
+        "BIR Form 2551Q",
+    }.issubset(forms)
 
 
 def test_pricing_suggestions_flag_low_margin_projects() -> None:

@@ -433,6 +433,7 @@ class AutomationEngine:
     def _tax_tasks(self) -> List[AutomationTask]:
         tasks: List[AutomationTask] = []
         profile = self._store.tax_profile()
+        today = self.now.date()
         for tip in profile.computed.deduction_opportunities:
             tasks.append(
                 AutomationTask(
@@ -442,6 +443,30 @@ class AutomationEngine:
                     due_at=self.now + timedelta(days=7),
                     details=tip.message,
                     related_ids={"tax_profile": "philippines"},
+                    action_label="Open tax planner",
+                    action_url="/financials/tax-calculator",
+                )
+            )
+        for obligation in profile.filing_calendar:
+            due_date = obligation.due_date
+            if due_date < today:
+                continue
+            days_until_due = (due_date - today).days
+            priority = AutomationPriority.HIGH if days_until_due <= 14 else AutomationPriority.MEDIUM
+            tasks.append(
+                AutomationTask(
+                    category=AutomationCategory.FINANCE,
+                    summary=f"Prepare {obligation.form} for {obligation.period}",
+                    priority=priority,
+                    due_at=datetime.combine(due_date, time(hour=10)),
+                    details=(
+                        f"{obligation.frequency} filing due on {due_date.strftime('%B %d, %Y')} — {obligation.description}"
+                    ),
+                    related_ids={
+                        "tax_profile": "philippines",
+                        "form": obligation.form,
+                        "period": obligation.period,
+                    },
                     action_label="Open tax planner",
                     action_url="/financials/tax-calculator",
                 )

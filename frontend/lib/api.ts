@@ -529,6 +529,27 @@ export interface DeductionOpportunity {
   message: string;
 }
 
+export interface TaxBusinessProfile {
+  taxpayer_type: string;
+  registration_type: string;
+  psic_primary_code: string;
+  psic_primary_description: string;
+  primary_line_of_business: string;
+  psic_secondary_code: string;
+  psic_secondary_description: string;
+  secondary_line_of_business: string;
+  filing_frequencies: string[];
+  compliance_notes: string[];
+}
+
+export interface FilingObligation {
+  form: string;
+  description: string;
+  frequency: string;
+  period: string;
+  due_date: string;
+}
+
 export interface TaxComputationResult {
   gross_revenue: number;
   total_cost_of_sales: number;
@@ -551,6 +572,8 @@ export interface TaxProfile {
   apply_percentage_tax: boolean;
   percentage_tax_rate: number;
   vat_registered: boolean;
+  business_profile: TaxBusinessProfile;
+  filing_calendar: FilingObligation[];
   last_updated: string;
   source_summary: Record<string, number>;
   computed: TaxComputationResult;
