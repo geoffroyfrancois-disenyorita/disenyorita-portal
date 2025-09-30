@@ -30,6 +30,13 @@ class TaskType(str, Enum):
     QA = "qa"
 
 
+class TaskPriority(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
 class ProjectTemplateType(str, Enum):
     WEBSITE = "website"
     BRANDING = "branding"
@@ -48,12 +55,34 @@ class Task(IdentifiedModel):
     estimated_hours: Optional[float] = None
     logged_hours: float = 0
     dependencies: List[str] = Field(default_factory=list)
+    priority: TaskPriority = TaskPriority.MEDIUM
+    story_points: Optional[float] = None
+    sprint_id: Optional[str] = None
 
 
 class Milestone(IdentifiedModel):
     title: str
     due_date: datetime
     completed: bool = False
+
+
+class SprintStatus(str, Enum):
+    PLANNING = "planning"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class Sprint(IdentifiedModel):
+    name: str
+    goal: Optional[str] = None
+    status: SprintStatus = SprintStatus.PLANNING
+    start_date: datetime
+    end_date: datetime
+    committed_points: float = 0.0
+    completed_points: float = 0.0
+    velocity: Optional[float] = None
+    focus_areas: List[str] = Field(default_factory=list)
 
 
 class Project(IdentifiedModel):
@@ -69,6 +98,8 @@ class Project(IdentifiedModel):
     currency: str = "USD"
     milestones: List[Milestone] = Field(default_factory=list)
     tasks: List[Task] = Field(default_factory=list)
+    sprints: List[Sprint] = Field(default_factory=list)
+    active_sprint_id: Optional[str] = None
 
 
 class TimeEntry(IdentifiedModel):
@@ -100,6 +131,9 @@ class TaskUpdate(BaseModel):
     estimated_hours: Optional[float] = None
     logged_hours: Optional[float] = None
     dependencies: Optional[List[str]] = None
+    priority: Optional[TaskPriority] = None
+    story_points: Optional[float] = None
+    sprint_id: Optional[str] = None
 
 
 class MilestoneUpdate(BaseModel):
@@ -142,6 +176,15 @@ class ProjectProgress(BaseModel):
     next_milestone: Optional[Milestone] = None
     health: ProjectHealth
     updated_at: datetime
+    total_story_points: float = 0.0
+    completed_story_points: float = 0.0
+    active_sprint_id: Optional[str] = None
+    active_sprint_name: Optional[str] = None
+    sprint_committed_points: Optional[float] = None
+    sprint_completed_points: Optional[float] = None
+    velocity: Optional[float] = None
+    forecast_completion: Optional[datetime] = None
+    story_point_progress: float = 0.0
 
 
 class TaskAlertSeverity(str, Enum):
@@ -169,6 +212,9 @@ class TaskTimelineEntry(BaseModel):
     dependencies: List[str] = Field(default_factory=list)
     is_late: bool = False
     will_be_late: bool = False
+    priority: TaskPriority = TaskPriority.MEDIUM
+    story_points: Optional[float] = None
+    sprint_id: Optional[str] = None
 
 
 class TaskNotificationType(str, Enum):
@@ -200,3 +246,10 @@ class ProjectTracker(BaseModel):
     tasks: List[TaskTimelineEntry]
     alerts: List[TaskAlert]
     notifications: List[TaskNotification]
+    active_sprint: Optional[Sprint] = None
+    upcoming_sprints: List[Sprint] = Field(default_factory=list)
+    backlog_summary: dict = Field(default_factory=dict)
+    total_story_points: float = 0.0
+    completed_story_points: float = 0.0
+    velocity: Optional[float] = None
+    forecast_completion: Optional[datetime] = None

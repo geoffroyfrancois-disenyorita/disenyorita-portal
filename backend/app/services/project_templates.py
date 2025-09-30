@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, Iterable, List, Optional
 
-from ..schemas.projects import Milestone, Task, TaskStatus, TaskType
+from ..schemas.projects import Milestone, Task, TaskPriority, TaskStatus, TaskType
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,8 @@ class TaskBlueprint:
     billable: bool = True
     task_type: TaskType = TaskType.FEATURE
     leader_id: Optional[str] = None
+    story_points: Optional[float] = None
+    priority: TaskPriority = TaskPriority.MEDIUM
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,8 @@ class ProjectTemplateLibrary:
                 leader_id=blueprint.leader_id,
                 start_date=start_anchor,
                 due_date=due_date,
+                story_points=blueprint.story_points,
+                priority=blueprint.priority,
             )
             tasks.append(task)
             dependencies_lookup[task.id] = list(blueprint.depends_on)
@@ -127,6 +131,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 duration_days=2,
                 estimated_hours=6,
                 task_type=TaskType.CHORE,
+                story_points=3,
+                priority=TaskPriority.MEDIUM,
             ),
             TaskBlueprint(
                 name="Discovery & Strategy",
@@ -134,6 +140,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Project Kickoff"],
                 estimated_hours=16,
                 task_type=TaskType.RESEARCH,
+                story_points=5,
+                priority=TaskPriority.HIGH,
             ),
             TaskBlueprint(
                 name="Content Architecture",
@@ -141,6 +149,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Discovery & Strategy"],
                 estimated_hours=12,
                 task_type=TaskType.FEATURE,
+                story_points=5,
+                priority=TaskPriority.HIGH,
             ),
             TaskBlueprint(
                 name="Visual Design",
@@ -148,6 +158,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Content Architecture"],
                 estimated_hours=30,
                 task_type=TaskType.FEATURE,
+                story_points=8,
+                priority=TaskPriority.HIGH,
             ),
             TaskBlueprint(
                 name="Development Sprint",
@@ -155,6 +167,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Visual Design"],
                 estimated_hours=45,
                 task_type=TaskType.FEATURE,
+                story_points=13,
+                priority=TaskPriority.CRITICAL,
             ),
             TaskBlueprint(
                 name="Quality Assurance",
@@ -162,6 +176,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Development Sprint"],
                 estimated_hours=18,
                 task_type=TaskType.QA,
+                story_points=5,
+                priority=TaskPriority.HIGH,
             ),
             TaskBlueprint(
                 name="Launch",
@@ -169,6 +185,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Quality Assurance"],
                 estimated_hours=4,
                 task_type=TaskType.CHORE,
+                story_points=3,
+                priority=TaskPriority.HIGH,
             ),
         ],
         milestones=[
@@ -184,6 +202,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 duration_days=3,
                 estimated_hours=8,
                 task_type=TaskType.RESEARCH,
+                story_points=3,
+                priority=TaskPriority.MEDIUM,
             ),
             TaskBlueprint(
                 name="Audience Research",
@@ -191,6 +211,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Brand Workshop"],
                 estimated_hours=20,
                 task_type=TaskType.RESEARCH,
+                story_points=5,
+                priority=TaskPriority.HIGH,
             ),
             TaskBlueprint(
                 name="Moodboards",
@@ -198,6 +220,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Audience Research"],
                 estimated_hours=16,
                 task_type=TaskType.FEATURE,
+                story_points=5,
+                priority=TaskPriority.MEDIUM,
             ),
             TaskBlueprint(
                 name="Logo Exploration",
@@ -205,6 +229,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Moodboards"],
                 estimated_hours=24,
                 task_type=TaskType.FEATURE,
+                story_points=8,
+                priority=TaskPriority.HIGH,
             ),
             TaskBlueprint(
                 name="Brand Guidelines",
@@ -212,6 +238,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Logo Exploration"],
                 estimated_hours=28,
                 task_type=TaskType.FEATURE,
+                story_points=8,
+                priority=TaskPriority.HIGH,
             ),
             TaskBlueprint(
                 name="Handover",
@@ -219,6 +247,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Brand Guidelines"],
                 estimated_hours=6,
                 task_type=TaskType.CHORE,
+                story_points=3,
+                priority=TaskPriority.MEDIUM,
             ),
         ],
         milestones=[
@@ -234,6 +264,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 duration_days=3,
                 estimated_hours=10,
                 task_type=TaskType.RESEARCH,
+                story_points=3,
+                priority=TaskPriority.MEDIUM,
             ),
             TaskBlueprint(
                 name="Stakeholder Interviews",
@@ -241,6 +273,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Initial Assessment"],
                 estimated_hours=18,
                 task_type=TaskType.RESEARCH,
+                story_points=5,
+                priority=TaskPriority.MEDIUM,
             ),
             TaskBlueprint(
                 name="Findings Synthesis",
@@ -248,6 +282,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Stakeholder Interviews"],
                 estimated_hours=14,
                 task_type=TaskType.FEATURE,
+                story_points=5,
+                priority=TaskPriority.HIGH,
             ),
             TaskBlueprint(
                 name="Opportunity Mapping",
@@ -255,6 +291,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Findings Synthesis"],
                 estimated_hours=12,
                 task_type=TaskType.FEATURE,
+                story_points=5,
+                priority=TaskPriority.HIGH,
             ),
             TaskBlueprint(
                 name="Roadmap Presentation",
@@ -262,6 +300,8 @@ DEFAULT_TEMPLATES: Dict[str, ProjectTemplate] = {
                 depends_on=["Opportunity Mapping"],
                 estimated_hours=10,
                 task_type=TaskType.CHORE,
+                story_points=3,
+                priority=TaskPriority.MEDIUM,
             ),
         ],
         milestones=[

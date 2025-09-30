@@ -26,6 +26,10 @@ class OperationsProject(BaseModel):
     late_tasks: int
     next_milestone_title: Optional[str]
     next_milestone_due: Optional[datetime]
+    active_sprint_name: Optional[str] = None
+    sprint_committed_points: Optional[float] = None
+    sprint_completed_points: Optional[float] = None
+    velocity: Optional[float] = None
 
 
 class CapacityAlert(BaseModel):

@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, root_validator
 
-from .projects import TaskStatus, TaskType
+from .projects import TaskPriority, TaskStatus, TaskType
 
 
 class ProjectTemplateTaskDefinition(BaseModel):
@@ -16,6 +16,8 @@ class ProjectTemplateTaskDefinition(BaseModel):
     estimated_hours: Optional[float] = None
     billable: bool = True
     leader_id: Optional[str] = None
+    story_points: Optional[float] = None
+    priority: TaskPriority = TaskPriority.MEDIUM
 
 
 class ProjectTemplateMilestoneDefinition(BaseModel):
