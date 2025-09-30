@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from ...schemas.dashboard import DashboardSnapshot
+from ...schemas.operations import OperationsSnapshot
 from ...services.data import store
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -16,3 +17,8 @@ def get_dashboard_snapshot() -> DashboardSnapshot:
         marketing=store.marketing_summary(),
         monitoring=store.monitoring_summary(),
     )
+
+
+@router.get("/operations", response_model=OperationsSnapshot)
+def get_operations_snapshot() -> OperationsSnapshot:
+    return store.operations_snapshot()
