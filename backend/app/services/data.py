@@ -7,6 +7,7 @@ from typing import Dict, List, Sequence, Tuple
 
 from ..schemas.clients import (
     Client,
+    ClientCRMOverview,
     ClientCreateRequest,
     ClientDashboard,
     ClientEngagement,
@@ -20,6 +21,10 @@ from ..schemas.clients import (
     ClientTicketDigest,
     ClientUpdateRequest,
     ClientWithProjects,
+    CRMContactGap,
+    CRMInteractionGap,
+    CRMMetric,
+    CRMPipelineStage,
     Contact,
     ContactUpdate,
     Document,
@@ -1581,6 +1586,209 @@ class InMemoryStore:
 
         engagements.sort(key=lambda entry: entry.organization_name.lower())
         return engagements
+
+    def client_crm_overview(self) -> ClientCRMOverview:
+        now = datetime.utcnow()
+        summary = self.client_summary()
+        engagements = self.client_engagements()
+        clients = list(self.clients.values())
+        client_lookup: Dict[str, Client] = {client.id: client for client in clients}
+
+        def last_interaction(client: Client) -> Optional[datetime]:
+            return max((interaction.occurred_at for interaction in client.interactions), default=None)
+
+        metrics: List[CRMMetric] = []
+        total_clients = summary.total_clients
+        active_retainers = sum(1 for client in clients if client.segment == ClientSegment.RETAINER)
+        vip_accounts = sum(1 for client in clients if client.segment == ClientSegment.VIP)
+        prospects = sum(1 for client in clients if client.segment == ClientSegment.PROSPECT)
+        portal_adoption = (
+            round((summary.active_portal_users / total_clients) * 100, 1)
+            if total_clients
+            else 0.0
+        )
+        total_outstanding = sum(eng.outstanding_balance for eng in engagements)
+
+        interaction_gaps_days = [
+            (now - interaction_at).days
+            for interaction_at in (last_interaction(client) for client in clients)
+            if interaction_at is not None
+        ]
+        average_days_between_touches = (
+            sum(interaction_gaps_days) / len(interaction_gaps_days)
+            if interaction_gaps_days
+            else 0.0
+        )
+
+        metrics.append(
+            CRMMetric(
+                label="Total accounts",
+                value=float(total_clients),
+                unit="accounts",
+                description="Active organizations managed in the portal.",
+            )
+        )
+        metrics.append(
+            CRMMetric(
+                label="Active retainers",
+                value=float(active_retainers),
+                unit="accounts",
+                description="Clients on ongoing, recurring retainers.",
+            )
+        )
+        metrics.append(
+            CRMMetric(
+                label="VIP relationships",
+                value=float(vip_accounts),
+                unit="accounts",
+                description="Top-tier partners requiring executive visibility.",
+            )
+        )
+        metrics.append(
+            CRMMetric(
+                label="Open receivables",
+                value=total_outstanding,
+                unit="currency",
+                description="Outstanding invoice value across all accounts.",
+            )
+        )
+        metrics.append(
+            CRMMetric(
+                label="Prospect pipeline",
+                value=float(prospects),
+                unit="accounts",
+                description="Inbound leads currently in nurture or pitching phases.",
+            )
+        )
+        metrics.append(
+            CRMMetric(
+                label="Portal adoption",
+                value=portal_adoption,
+                unit="percent",
+                description="Share of clients actively using the self-service portal.",
+            )
+        )
+        metrics.append(
+            CRMMetric(
+                label="Avg days since touch",
+                value=average_days_between_touches,
+                unit="days",
+                description="Average number of days since the last recorded interaction per account.",
+            )
+        )
+
+        segment_labels = {
+            ClientSegment.RETAINER: "Retainers",
+            ClientSegment.PROJECT: "Project engagements",
+            ClientSegment.VIP: "VIP accounts",
+            ClientSegment.PROSPECT: "Prospects",
+        }
+
+        pipeline: List[CRMPipelineStage] = []
+        for segment in ClientSegment:
+            stage_engagements = [eng for eng in engagements if eng.segment == segment]
+            if not stage_engagements:
+                continue
+
+            follow_up_needed = 0
+            days_since_touch: List[int] = []
+            for engagement in stage_engagements:
+                client = client_lookup.get(engagement.client_id)
+                interaction_at = last_interaction(client) if client else None
+                if interaction_at:
+                    delta_days = (now - interaction_at).days
+                    days_since_touch.append(delta_days)
+                    if delta_days > 14:
+                        follow_up_needed += 1
+                else:
+                    follow_up_needed += 1
+
+            avg_days = (
+                sum(days_since_touch) / len(days_since_touch)
+                if days_since_touch
+                else None
+            )
+
+            pipeline.append(
+                CRMPipelineStage(
+                    segment=segment,
+                    label=segment_labels.get(segment, segment.value.title()),
+                    client_count=len(stage_engagements),
+                    total_active_projects=sum(eng.active_projects for eng in stage_engagements),
+                    total_outstanding_balance=sum(
+                        eng.outstanding_balance for eng in stage_engagements
+                    ),
+                    avg_days_since_touch=avg_days,
+                    follow_up_needed=follow_up_needed,
+                )
+            )
+
+        def next_step_for_segment(segment: ClientSegment) -> str:
+            if segment == ClientSegment.VIP:
+                return "Schedule executive business review"
+            if segment == ClientSegment.RETAINER:
+                return "Share KPI snapshot with account champion"
+            if segment == ClientSegment.PROJECT:
+                return "Send progress recap and confirm next milestone"
+            return "Send tailored capabilities deck to convert"
+
+        interaction_gaps: List[CRMInteractionGap] = []
+        for client in clients:
+            interaction_at = last_interaction(client)
+            days_since = (now - interaction_at).days if interaction_at else None
+            if days_since is None or days_since > 21:
+                interaction_gaps.append(
+                    CRMInteractionGap(
+                        client_id=client.id,
+                        organization_name=client.organization_name,
+                        segment=client.segment,
+                        preferred_channel=client.preferred_channel,
+                        last_interaction_at=interaction_at,
+                        days_since_last=days_since,
+                        suggested_next_step=next_step_for_segment(client.segment),
+                    )
+                )
+
+        interaction_gaps.sort(
+            key=lambda entry: entry.days_since_last if entry.days_since_last is not None else 10**6,
+            reverse=True,
+        )
+        interaction_gaps = interaction_gaps[:8]
+
+        contact_gaps: List[CRMContactGap] = []
+        for client in clients:
+            contact_count = len(client.contacts)
+            needs_additional_contacts = contact_count == 0
+            if not needs_additional_contacts and client.segment in {
+                ClientSegment.VIP,
+                ClientSegment.RETAINER,
+            }:
+                needs_additional_contacts = contact_count < 2
+
+            if needs_additional_contacts:
+                recommended_role = (
+                    "Executive sponsor"
+                    if client.segment in {ClientSegment.VIP, ClientSegment.RETAINER}
+                    else "Primary point of contact"
+                )
+                contact_gaps.append(
+                    CRMContactGap(
+                        client_id=client.id,
+                        organization_name=client.organization_name,
+                        segment=client.segment,
+                        contact_count=contact_count,
+                        recommended_role=recommended_role,
+                    )
+                )
+
+        contact_gaps.sort(key=lambda entry: entry.contact_count)
+
+        return ClientCRMOverview(
+            metrics=metrics,
+            pipeline=pipeline,
+            interaction_gaps=interaction_gaps,
+            contact_gaps=contact_gaps,
+        )
 
     def financial_summary(self) -> FinancialSummary:
         outstanding = 0.0

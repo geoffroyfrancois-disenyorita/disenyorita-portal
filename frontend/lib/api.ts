@@ -41,6 +41,7 @@ export const api = {
   clients: () => request<Client[]>("/clients"),
   client: (clientId: string) => request<Client>(`/clients/${clientId}`),
   clientDashboard: (clientId: string) => request<ClientDashboard>(`/clients/${clientId}/dashboard`),
+  clientCRMOverview: () => request<ClientCRMOverview>("/clients/crm/overview"),
   createClient: (payload: ClientCreateRequest) =>
     request<ClientWithProjects>("/clients", {
       method: "POST",
@@ -449,6 +450,49 @@ export interface ClientDashboard {
   projects: ClientProjectDigest[];
   financials: ClientFinancialSnapshot;
   support: ClientSupportSnapshot;
+}
+
+export interface CRMMetric {
+  label: string;
+  value: number;
+  unit: "" | "accounts" | "currency" | "percent" | "days";
+  description?: string | null;
+}
+
+export interface CRMPipelineStage {
+  segment: ClientSegment;
+  label: string;
+  client_count: number;
+  total_active_projects: number;
+  total_outstanding_balance: number;
+  avg_days_since_touch?: number | null;
+  follow_up_needed: number;
+}
+
+export interface CRMInteractionGap {
+  client_id: string;
+  organization_name: string;
+  segment: ClientSegment;
+  preferred_channel: InteractionChannel;
+  last_interaction_at?: string | null;
+  days_since_last?: number | null;
+  suggested_next_step: string;
+}
+
+export interface CRMContactGap {
+  client_id: string;
+  organization_name: string;
+  segment: ClientSegment;
+  contact_count: number;
+  recommended_role: string;
+}
+
+export interface ClientCRMOverview {
+  generated_at: string;
+  metrics: CRMMetric[];
+  pipeline: CRMPipelineStage[];
+  interaction_gaps: CRMInteractionGap[];
+  contact_gaps: CRMContactGap[];
 }
 
 export interface ProjectSetup {

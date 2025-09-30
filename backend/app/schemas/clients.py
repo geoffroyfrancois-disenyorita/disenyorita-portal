@@ -229,3 +229,46 @@ class ClientEngagement(BaseModel):
     next_milestone: Optional[Milestone] = None
     last_interaction_at: Optional[datetime] = None
     health: str
+
+
+class CRMMetric(BaseModel):
+    label: str
+    value: float
+    unit: str = ""
+    description: Optional[str] = None
+
+
+class CRMPipelineStage(BaseModel):
+    segment: ClientSegment
+    label: str
+    client_count: int
+    total_active_projects: int
+    total_outstanding_balance: float
+    avg_days_since_touch: Optional[float] = None
+    follow_up_needed: int = 0
+
+
+class CRMInteractionGap(BaseModel):
+    client_id: str
+    organization_name: str
+    segment: ClientSegment
+    preferred_channel: InteractionChannel
+    last_interaction_at: Optional[datetime] = None
+    days_since_last: Optional[int] = None
+    suggested_next_step: str
+
+
+class CRMContactGap(BaseModel):
+    client_id: str
+    organization_name: str
+    segment: ClientSegment
+    contact_count: int
+    recommended_role: str
+
+
+class ClientCRMOverview(BaseModel):
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    metrics: List[CRMMetric] = Field(default_factory=list)
+    pipeline: List[CRMPipelineStage] = Field(default_factory=list)
+    interaction_gaps: List[CRMInteractionGap] = Field(default_factory=list)
+    contact_gaps: List[CRMContactGap] = Field(default_factory=list)

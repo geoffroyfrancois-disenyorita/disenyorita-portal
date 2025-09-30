@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from ...schemas.clients import (
     Client,
+    ClientCRMOverview,
     ClientCreateRequest,
     ClientDashboard,
     ClientEngagement,
@@ -29,6 +30,11 @@ def client_summary() -> ClientSummary:
 @router.get("/engagements", response_model=List[ClientEngagement])
 def client_engagements() -> List[ClientEngagement]:
     return store.client_engagements()
+
+
+@router.get("/crm/overview", response_model=ClientCRMOverview)
+def client_crm_overview() -> ClientCRMOverview:
+    return store.client_crm_overview()
 
 
 @router.post("", response_model=ClientWithProjects, status_code=status.HTTP_201_CREATED)

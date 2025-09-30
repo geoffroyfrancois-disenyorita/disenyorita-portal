@@ -70,6 +70,74 @@ const projectTemplateOptions = [
   { label: "Consulting", value: "consulting" }
 ];
 
+const segmentLabels: Record<ClientSegment, string> = {
+  retainer: "Retainer",
+  project: "Project",
+  vip: "VIP",
+  prospect: "Prospect"
+};
+
+const segmentBadgeClasses: Record<ClientSegment, string> = {
+  retainer: "success",
+  project: "neutral",
+  vip: "warning",
+  prospect: "info"
+};
+
+function latestInteractionTimestamp(client: Client): string | null {
+  if (!client.interactions || client.interactions.length === 0) {
+    return null;
+  }
+
+  return client.interactions
+    .map((interaction) => interaction.occurred_at)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+}
+
+function formatRelativeInteraction(isoTimestamp: string): { label: string; days: number } {
+  const interactionDate = new Date(isoTimestamp);
+  const diffMs = Date.now() - interactionDate.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) {
+    return { label: "Today", days: 0 };
+  }
+  if (diffDays === 1) {
+    return { label: "1 day ago", days: 1 };
+  }
+  if (diffDays < 7) {
+    return { label: `${diffDays} days ago`, days: diffDays };
+  }
+
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 4) {
+    return { label: `${diffWeeks} wk${diffWeeks === 1 ? "" : "s"} ago`, days: diffDays };
+  }
+
+  return {
+    label: interactionDate.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric"
+    }),
+    days: diffDays
+  };
+}
+
+function formatChannelLabel(channel: InteractionChannel): string {
+  switch (channel) {
+    case "email":
+      return "Email";
+    case "portal":
+      return "Client portal";
+    case "social":
+      return "Social";
+    case "phone":
+      return "Phone";
+    default:
+      return channel;
+  }
+}
+
 function initialFormState(): ClientFormState {
   return {
     organization_name: "",
@@ -104,6 +172,9 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [segmentFilter, setSegmentFilter] = useState<ClientSegment | "all">("all");
+  const [industryFilter, setIndustryFilter] = useState<Industry | "all">("all");
 
   const canSubmit = useMemo(() => {
     const { organization_name, billing_email, project } = formState;
@@ -123,6 +194,42 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
     setFormState(initialFormState());
     setError(null);
   };
+
+  const filteredClients = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return clients.filter((client) => {
+      const matchesTerm = term
+        ? client.organization_name.toLowerCase().includes(term) ||
+          client.billing_email.toLowerCase().includes(term) ||
+          (client.contacts ?? []).some((contact) => {
+            const fullName = `${contact.first_name} ${contact.last_name}`.toLowerCase();
+            return (
+              fullName.includes(term) ||
+              (contact.email ?? "").toLowerCase().includes(term) ||
+              (contact.title ?? "").toLowerCase().includes(term)
+            );
+          })
+        : true;
+
+      const matchesSegment = segmentFilter === "all" || client.segment === segmentFilter;
+      const matchesIndustry = industryFilter === "all" || client.industry === industryFilter;
+      return matchesTerm && matchesSegment && matchesIndustry;
+    });
+  }, [clients, searchTerm, segmentFilter, industryFilter]);
+
+  const hasActiveFilters = useMemo(
+    () => searchTerm.trim() !== "" || segmentFilter !== "all" || industryFilter !== "all",
+    [searchTerm, segmentFilter, industryFilter]
+  );
+
+  const handleClearFilters = () => {
+    setSearchTerm("");
+    setSegmentFilter("all");
+    setIndustryFilter("all");
+  };
+
+  const segmentSelectOptions = [{ label: "All segments", value: "all" as const }, ...segmentOptions];
+  const industrySelectOptions = [{ label: "All industries", value: "all" as const }, ...industryOptions];
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -187,46 +294,123 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
   return (
     <div>
       <div className="clients-toolbar">
-        <button className="button primary" onClick={() => setIsModalOpen(true)}>
-          + Add Client
-        </button>
-        {successMessage && <span className="form-feedback success">{successMessage}</span>}
+        <div className="clients-toolbar-actions">
+          <button className="button primary" onClick={() => setIsModalOpen(true)}>
+            + Add Client
+          </button>
+          {successMessage && <span className="form-feedback success">{successMessage}</span>}
+          <span className="crm-result-count">
+            {filteredClients.length === clients.length
+              ? `${clients.length} clients`
+              : `${filteredClients.length} of ${clients.length} clients`}
+          </span>
+        </div>
+        <div className="clients-toolbar-filters">
+          <input
+            type="search"
+            placeholder="Search clients or contacts"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+          />
+          <select
+            value={segmentFilter}
+            onChange={(event) => setSegmentFilter(event.target.value as ClientSegment | "all")}
+          >
+            {segmentSelectOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={industryFilter}
+            onChange={(event) => setIndustryFilter(event.target.value as Industry | "all")}
+          >
+            {industrySelectOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <button className="button ghost" type="button" onClick={handleClearFilters} disabled={!hasActiveFilters}>
+            Clear
+          </button>
+        </div>
       </div>
       <table className="table">
         <thead>
           <tr>
             <th>Organization</th>
-            <th>Industry</th>
             <th>Segment</th>
-            <th>Billing Email</th>
+            <th>Industry</th>
+            <th>Contacts</th>
+            <th>Last touch</th>
+            <th>Preferred channel</th>
             <th>Timezone</th>
           </tr>
         </thead>
         <tbody>
-          {clients.map((client) => (
-            <tr
-              key={client.id}
-              className="clickable-row"
-              onClick={() => router.push(`/clients/${client.id}`)}
-            >
-              <td>
-                <Link href={`/clients/${client.id}`} onClick={(event) => event.stopPropagation()}>
-                  {client.organization_name}
-                </Link>
+          {filteredClients.length === 0 ? (
+            <tr>
+              <td className="table-empty" colSpan={7}>
+                No clients match the current filters. Update your filters or clear them to view all accounts.
               </td>
-              <td style={{ textTransform: "capitalize" }}>{client.industry}</td>
-              <td>
-                <span
-                  className={`badge ${client.segment === "retainer" ? "success" : client.segment === "vip" ? "warning" : ""}`}
-                  style={{ textTransform: "uppercase", letterSpacing: "0.08em" }}
-                >
-                  {client.segment}
-                </span>
-              </td>
-              <td>{client.billing_email}</td>
-              <td>{client.timezone}</td>
             </tr>
-          ))}
+          ) : (
+            filteredClients.map((client) => {
+              const latestInteraction = latestInteractionTimestamp(client);
+              const interactionDetails = latestInteraction
+                ? formatRelativeInteraction(latestInteraction)
+                : null;
+              const lastTouchClass = interactionDetails
+                ? `crm-last-touch${interactionDetails.days > 21 ? " stale" : interactionDetails.days <= 7 ? " fresh" : ""}`
+                : "crm-last-touch";
+              const contacts = client.contacts ?? [];
+              const primaryContact = contacts[0];
+              const contactCellClass = contacts.length === 0 ? "crm-contact-cell empty" : "crm-contact-cell";
+
+              return (
+                <tr
+                  key={client.id}
+                  className="clickable-row"
+                  onClick={() => router.push(`/clients/${client.id}`)}
+                >
+                  <td>
+                    <Link href={`/clients/${client.id}`} onClick={(event) => event.stopPropagation()}>
+                      {client.organization_name}
+                    </Link>
+                    <div className="crm-org-meta">{client.billing_email}</div>
+                  </td>
+                  <td>
+                    <span className={`badge ${segmentBadgeClasses[client.segment]}`}>
+                      {segmentLabels[client.segment]}
+                    </span>
+                  </td>
+                  <td style={{ textTransform: "capitalize" }}>{client.industry}</td>
+                  <td>
+                    <div className={contactCellClass}>
+                      <span className="crm-contact-count">
+                        {contacts.length > 0
+                          ? `${contacts.length} ${contacts.length === 1 ? "contact" : "contacts"}`
+                          : "No contacts"}
+                      </span>
+                      {primaryContact && (
+                        <span className="crm-contact-primary">
+                          {primaryContact.first_name} {primaryContact.last_name}
+                          {primaryContact.title ? ` • ${primaryContact.title}` : ""}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className={lastTouchClass}>
+                    {interactionDetails ? interactionDetails.label : "No interactions logged"}
+                  </td>
+                  <td>{formatChannelLabel(client.preferred_channel)}</td>
+                  <td>{client.timezone}</td>
+                </tr>
+              );
+            })
+          )}
         </tbody>
       </table>
 
