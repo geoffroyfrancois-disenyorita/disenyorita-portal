@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from collections import defaultdict
+from datetime import date, datetime, timedelta
 from uuid import uuid4
 from typing import Dict, List, Sequence, Tuple
 
@@ -78,6 +79,15 @@ from ..schemas.marketing import (
     MetricSnapshot,
 )
 from ..schemas.monitoring import Alert, Check, MonitoringSummary, Site, SiteStatus
+from ..schemas.operations import (
+    CashRunway,
+    CapacityAlert,
+    MonitoringIncident,
+    OperationsProject,
+    OperationsRecommendation,
+    OperationsSnapshot,
+    TimeOffWindow,
+)
 from .project_templates import build_plan, project_code, template_library
 
 
@@ -113,14 +123,15 @@ class InMemoryStore:
         self.automation_broadcasts: List[str] = []
         self.task_notifications: List[TaskNotification] = []
         self.operating_expense_baselines: Dict[str, float] = {
-            "Studio rent": 180_000.0,
-            "Team salaries": 780_000.0,
-            "Utilities & internet": 54_000.0,
+            "Studio rent": 180_000.0 / 12,
+            "Team salaries": 780_000.0 / 12,
+            "Utilities & internet": 54_000.0 / 12,
         }
         self.statutory_contributions: Dict[str, float] = {
-            "SSS": 24_000.0,
-            "PhilHealth": 36_000.0,
+            "SSS": 24_000.0 / 12,
+            "PhilHealth": 36_000.0 / 12,
         }
+        self.capacity_overrides: Dict[str, Tuple[float, float]] = {}
         self.tax_configuration: Dict[str, float | bool] = {
             "apply_percentage_tax": True,
             "percentage_tax_rate": 3.0,
@@ -170,9 +181,29 @@ class InMemoryStore:
             self.clients[client.id] = client
 
         # Seed projects
-        discovery_task = Task(name="Discovery Workshop", status=TaskStatus.DONE, logged_hours=6)
-        ux_task = Task(name="UX Wireframes", status=TaskStatus.IN_PROGRESS, estimated_hours=30, logged_hours=12)
-        audit_task = Task(name="Operational Audit", status=TaskStatus.IN_PROGRESS, estimated_hours=40, logged_hours=18)
+        discovery_task = Task(
+            name="Discovery Workshop",
+            status=TaskStatus.DONE,
+            logged_hours=6,
+            start_date=now - timedelta(days=18),
+            due_date=now - timedelta(days=12),
+        )
+        ux_task = Task(
+            name="UX Wireframes",
+            status=TaskStatus.IN_PROGRESS,
+            estimated_hours=30,
+            logged_hours=12,
+            start_date=now - timedelta(days=9),
+            due_date=now - timedelta(days=2),
+        )
+        audit_task = Task(
+            name="Operational Audit",
+            status=TaskStatus.IN_PROGRESS,
+            estimated_hours=40,
+            logged_hours=18,
+            start_date=now - timedelta(days=4),
+            due_date=now + timedelta(days=3),
+        )
         website_project = Project(
             name="Sunset Boutique Website Refresh",
             code="DIS-WEB-2024-01",
@@ -263,7 +294,7 @@ class InMemoryStore:
         self.articles[article.id] = article
 
         # HR
-        employee = Employee(
+        project_manager = Employee(
             first_name="Avery",
             last_name="Nguyen",
             email="avery@disenyorita.example",
@@ -271,9 +302,56 @@ class InMemoryStore:
             title="Project Manager",
             skills=[Skill(name="Hospitality Ops", proficiency=4)],
         )
-        self.employees[employee.id] = employee
-        time_off = TimeOffRequest(employee_id=employee.id, start_date=now.date() + timedelta(days=10), end_date=now.date() + timedelta(days=12))
-        self.time_off[time_off.id] = time_off
+        self.employees[project_manager.id] = project_manager
+        manager_leave = TimeOffRequest(
+            employee_id=project_manager.id,
+            start_date=now.date() + timedelta(days=10),
+            end_date=now.date() + timedelta(days=12),
+            status=TimeOffStatus.APPROVED,
+            reason="Annual family break",
+        )
+        self.time_off[manager_leave.id] = manager_leave
+        self.capacity_overrides[project_manager.id] = (18.0, 0.9)
+
+        designer = Employee(
+            first_name="Lia",
+            last_name="Santos",
+            email="lia@disenyorita.example",
+            employment_type=EmploymentType.EMPLOYEE,
+            title="Brand Designer",
+            manager_id=project_manager.id,
+            skills=[Skill(name="Brand Strategy", proficiency=5), Skill(name="UX", proficiency=4)],
+        )
+        self.employees[designer.id] = designer
+        designer_leave = TimeOffRequest(
+            employee_id=designer.id,
+            start_date=now.date() + timedelta(days=3),
+            end_date=now.date() + timedelta(days=4),
+            status=TimeOffStatus.PENDING,
+            reason="Creative summit attendance",
+        )
+        self.time_off[designer_leave.id] = designer_leave
+        self.capacity_overrides[designer.id] = (24.0, 0.82)
+
+        consultant = Employee(
+            first_name="Marco",
+            last_name="Cruz",
+            email="marco@isla.example",
+            employment_type=EmploymentType.CONTRACTOR,
+            title="Hospitality Consultant",
+            manager_id=project_manager.id,
+            skills=[Skill(name="F&B Operations", proficiency=5), Skill(name="Revenue Management", proficiency=4)],
+        )
+        self.employees[consultant.id] = consultant
+        consultant_leave = TimeOffRequest(
+            employee_id=consultant.id,
+            start_date=now.date() + timedelta(days=18),
+            end_date=now.date() + timedelta(days=19),
+            status=TimeOffStatus.APPROVED,
+            reason="Client site visit",
+        )
+        self.time_off[consultant_leave.id] = consultant_leave
+        self.capacity_overrides[consultant.id] = (32.0, 0.68)
 
         # Marketing
         campaign = Campaign(
@@ -281,7 +359,7 @@ class InMemoryStore:
             objective="Promote new branding showcase",
             channel=MarketingChannel.SOCIAL,
             start_date=now - timedelta(days=2),
-            owner_id=employee.id,
+            owner_id=project_manager.id,
         )
         self.campaigns[campaign.id] = campaign
         content = ContentItem(campaign_id=campaign.id, title="Instagram Reel", status=ContentStatus.SCHEDULED, scheduled_for=now + timedelta(days=1), platform="instagram")
@@ -314,6 +392,25 @@ class InMemoryStore:
             last_response_time_ms=None,
         )
         self.checks[compliance_check.id] = compliance_check
+
+        isla_site = Site(url="https://portal.isla.example", label="Isla Client Portal", brand="isla")
+        self.sites[isla_site.id] = isla_site
+        portal_check = Check(
+            site_id=isla_site.id,
+            type="synthetic_login",
+            status="failing",
+            last_run=now - timedelta(minutes=8),
+            last_response_time_ms=2150,
+        )
+        self.checks[portal_check.id] = portal_check
+        outage_alert = Alert(
+            site_id=isla_site.id,
+            message="Client portal login failures detected (SSL certificate check failing)",
+            severity="critical",
+            triggered_at=now - timedelta(minutes=20),
+            acknowledged=False,
+        )
+        self.alerts[outage_alert.id] = outage_alert
 
     def _generate_project_code(self, template_id: str) -> str:
         prefix = template_library.code_prefix(template_id)
@@ -1469,10 +1566,38 @@ class InMemoryStore:
         )
 
     def resource_capacity(self) -> List[ResourceCapacity]:
-        return [
-            ResourceCapacity(user_id=employee.id, available_hours=32, billable_ratio=0.75)
-            for employee in self.employees.values()
-        ]
+        today = date.today()
+        horizon = today + timedelta(days=14)
+        capacities: List[ResourceCapacity] = []
+        for employee in self.employees.values():
+            available_hours: float
+            billable_ratio: float
+            override = self.capacity_overrides.get(employee.id)
+            if override:
+                available_hours, billable_ratio = override
+            else:
+                upcoming = [
+                    request
+                    for request in self.time_off.values()
+                    if request.employee_id == employee.id
+                    and request.status != TimeOffStatus.REJECTED
+                    and request.start_date <= horizon
+                    and request.end_date >= today
+                ]
+                time_off_days = sum((request.end_date - request.start_date).days + 1 for request in upcoming)
+                available_hours = max(12.0, 36.0 - time_off_days * 8)
+                billable_ratio = 0.72
+
+            capacities.append(
+                ResourceCapacity(
+                    user_id=employee.id,
+                    available_hours=round(available_hours, 1),
+                    billable_ratio=round(billable_ratio, 2),
+                )
+            )
+
+        capacities.sort(key=lambda record: record.available_hours)
+        return capacities
 
     def site_statuses(self) -> List[SiteStatus]:
         statuses: List[SiteStatus] = []
@@ -1481,6 +1606,203 @@ class InMemoryStore:
             alerts = [alert for alert in self.alerts.values() if alert.site_id == site.id]
             statuses.append(SiteStatus(site=site, checks=checks, alerts=alerts))
         return statuses
+
+    def operations_snapshot(self) -> OperationsSnapshot:
+        now = datetime.utcnow()
+        macro = self.macro_financials()
+        cash_on_hand = max(macro.total_collected - macro.total_expenses, 0.0)
+
+        expenses_by_month = defaultdict(float)
+        for expense in self.expenses.values():
+            key = (expense.incurred_at.year, expense.incurred_at.month)
+            expenses_by_month[key] += expense.amount
+        trailing_months = len(expenses_by_month)
+        trailing_burn = (
+            sum(expenses_by_month.values()) / trailing_months if trailing_months else 0.0
+        )
+        baseline_burn = sum(self.operating_expense_baselines.values()) + sum(
+            self.statutory_contributions.values()
+        )
+        monthly_burn = max(trailing_burn, baseline_burn)
+        runway_days = int((cash_on_hand / monthly_burn) * 30) if monthly_burn else None
+        collection_rate = (
+            macro.total_collected / macro.total_invoiced if macro.total_invoiced else 1.0
+        )
+
+        cash = CashRunway(
+            total_cash_on_hand=round(cash_on_hand, 2),
+            monthly_burn_rate=round(monthly_burn, 2),
+            runway_days=runway_days,
+            outstanding_invoices=round(macro.total_outstanding, 2),
+            upcoming_payables=round(baseline_burn, 2),
+            collection_rate=round(collection_rate, 2),
+        )
+
+        at_risk_projects: List[OperationsProject] = []
+        for project in self.project_portfolio():
+            if project.health not in {ProjectHealth.AT_RISK, ProjectHealth.BLOCKED}:
+                continue
+            next_title = project.next_milestone.title if project.next_milestone else None
+            next_due = project.next_milestone.due_date if project.next_milestone else None
+            at_risk_projects.append(
+                OperationsProject(
+                    project_id=project.project_id,
+                    project_name=project.name,
+                    client_name=project.client_name,
+                    health=project.health,
+                    progress=round(project.progress, 1),
+                    late_tasks=project.late_tasks,
+                    next_milestone_title=next_title,
+                    next_milestone_due=next_due,
+                )
+            )
+        at_risk_projects.sort(
+            key=lambda entry: (
+                entry.health != ProjectHealth.BLOCKED,
+                -entry.late_tasks,
+                entry.progress,
+            )
+        )
+
+        capacity_alerts: List[CapacityAlert] = []
+        for capacity in self.resource_capacity():
+            employee = self.employees.get(capacity.user_id)
+            if not employee:
+                continue
+            reasons: List[str] = []
+            if capacity.available_hours <= 24:
+                reasons.append(
+                    f"Only {capacity.available_hours:.0f}h availability remaining in next sprint"
+                )
+            if capacity.billable_ratio >= 0.8:
+                reasons.append(
+                    f"Billable load at {capacity.billable_ratio * 100:.0f}%"
+                )
+            if not reasons:
+                continue
+            capacity_alerts.append(
+                CapacityAlert(
+                    employee_id=capacity.user_id,
+                    employee_name=f"{employee.first_name} {employee.last_name}",
+                    available_hours=capacity.available_hours,
+                    billable_ratio=capacity.billable_ratio,
+                    reason="; ".join(reasons),
+                )
+            )
+
+        upcoming_time_off: List[TimeOffWindow] = []
+        horizon = now.date() + timedelta(days=45)
+        for request in self.time_off.values():
+            if request.status == TimeOffStatus.REJECTED:
+                continue
+            if request.start_date < now.date():
+                continue
+            if request.start_date > horizon:
+                continue
+            employee = self.employees.get(request.employee_id)
+            if not employee:
+                continue
+            upcoming_time_off.append(
+                TimeOffWindow(
+                    employee_id=request.employee_id,
+                    employee_name=f"{employee.first_name} {employee.last_name}",
+                    start_date=request.start_date,
+                    end_date=request.end_date,
+                    status=request.status,
+                )
+            )
+        upcoming_time_off.sort(key=lambda window: window.start_date)
+
+        monitoring_incidents: List[MonitoringIncident] = []
+        for status in self.site_statuses():
+            for alert in status.alerts:
+                if alert.acknowledged:
+                    continue
+                monitoring_incidents.append(
+                    MonitoringIncident(
+                        site_id=status.site.id,
+                        site_label=status.site.label,
+                        severity=alert.severity,
+                        triggered_at=alert.triggered_at,
+                        message=alert.message,
+                        acknowledged=alert.acknowledged,
+                    )
+                )
+        monitoring_incidents.sort(
+            key=lambda incident: incident.triggered_at,
+            reverse=True,
+        )
+
+        recommendations: List[OperationsRecommendation] = []
+        if runway_days is not None and runway_days < 120:
+            recommendations.append(
+                OperationsRecommendation(
+                    title="Extend cash runway",
+                    description=(
+                        "Cash coverage is under four months. Review retainers, pause discretionary spend, "
+                        "and fast-track invoicing."
+                    ),
+                    category="finance",
+                    impact="high",
+                )
+            )
+        if at_risk_projects:
+            project_names = ", ".join(
+                project.project_name for project in at_risk_projects[:2]
+            )
+            recommendations.append(
+                OperationsRecommendation(
+                    title="Stabilise delivery timelines",
+                    description=(
+                        f"Escalate blockers for {project_names} to protect hospitality launch commitments."
+                    ),
+                    category="projects",
+                    impact="high"
+                    if any(project.health == ProjectHealth.BLOCKED for project in at_risk_projects)
+                    else "medium",
+                )
+            )
+        if capacity_alerts:
+            recommendations.append(
+                OperationsRecommendation(
+                    title="Rebalance workloads",
+                    description=(
+                        "Team capacity is stretched; consider contracting support or reassigning billable work."
+                    ),
+                    category="people",
+                    impact="medium",
+                )
+            )
+        if monitoring_incidents:
+            recommendations.append(
+                OperationsRecommendation(
+                    title="Resolve client portal outage",
+                    description=(
+                        "Active monitoring incidents require attention before the next client status sync."
+                    ),
+                    category="technology",
+                    impact="high",
+                )
+            )
+        if not recommendations:
+            recommendations.append(
+                OperationsRecommendation(
+                    title="Operations steady",
+                    description="No critical risks detected across finance, delivery, or infrastructure.",
+                    category="summary",
+                    impact="low",
+                )
+            )
+
+        return OperationsSnapshot(
+            generated_at=now,
+            cash=cash,
+            at_risk_projects=at_risk_projects,
+            capacity_alerts=capacity_alerts,
+            upcoming_time_off=upcoming_time_off,
+            monitoring_incidents=monitoring_incidents,
+            recommendations=recommendations,
+        )
 
 
 store = InMemoryStore()

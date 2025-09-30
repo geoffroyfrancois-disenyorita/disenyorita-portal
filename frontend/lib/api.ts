@@ -22,6 +22,7 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
 
 export const api = {
   dashboard: () => request<DashboardSnapshot>("/dashboard"),
+  operations: () => request<OperationsSnapshot>("/dashboard/operations"),
   automationDigest: () => request<AutomationDigest>("/automation/digest"),
   automationHistory: () => request<AutomationDigest[]>("/automation/digest/history"),
   projects: () => request<Project[]>("/projects"),
@@ -96,6 +97,68 @@ export interface DashboardSnapshot {
     avg_response_time_ms: number;
     failing_checks: number;
   };
+}
+
+export interface CashRunway {
+  total_cash_on_hand: number;
+  monthly_burn_rate: number;
+  runway_days: number | null;
+  outstanding_invoices: number;
+  upcoming_payables: number;
+  collection_rate: number;
+}
+
+export interface OperationsProject {
+  project_id: string;
+  project_name: string;
+  client_name?: string | null;
+  health: string;
+  progress: number;
+  late_tasks: number;
+  next_milestone_title?: string | null;
+  next_milestone_due?: string | null;
+}
+
+export interface CapacityAlert {
+  employee_id: string;
+  employee_name: string;
+  available_hours: number;
+  billable_ratio: number;
+  reason: string;
+}
+
+export interface TimeOffWindow {
+  employee_id: string;
+  employee_name: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+}
+
+export interface MonitoringIncident {
+  site_id: string;
+  site_label: string;
+  severity: string;
+  triggered_at: string;
+  message: string;
+  acknowledged: boolean;
+}
+
+export interface OperationsRecommendation {
+  title: string;
+  description: string;
+  category: string;
+  impact: string;
+}
+
+export interface OperationsSnapshot {
+  generated_at: string;
+  cash: CashRunway;
+  at_risk_projects: OperationsProject[];
+  capacity_alerts: CapacityAlert[];
+  upcoming_time_off: TimeOffWindow[];
+  monitoring_incidents: MonitoringIncident[];
+  recommendations: OperationsRecommendation[];
 }
 
 export type AutomationCategory =
