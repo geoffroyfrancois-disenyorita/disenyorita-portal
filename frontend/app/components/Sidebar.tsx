@@ -24,8 +24,8 @@ export function Sidebar(): JSX.Element {
     <aside
       style={{
         width: "240px",
-        background: "linear-gradient(180deg, rgba(237, 233, 254, 0.95), rgba(255, 247, 237, 0.95))",
-        borderRight: "1px solid rgba(196, 181, 253, 0.45)",
+        background: "linear-gradient(180deg, rgba(139, 57, 33, 0.95), rgba(139, 57, 33, 0.78))",
+        borderRight: "1px solid rgba(63, 34, 22, 0.25)",
         display: "flex",
         flexDirection: "column",
         padding: "1.5rem 1rem",
@@ -33,10 +33,10 @@ export function Sidebar(): JSX.Element {
       }}
     >
       <div>
-        <p style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "#64748b", marginBottom: "0.25rem" }}>
+        <p style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "#f2d5c1", letterSpacing: "0.12em", marginBottom: "0.25rem" }}>
           Disenyorita & Isla
         </p>
-        <h1 style={{ fontSize: "1.25rem", margin: 0 }}>Command Center</h1>
+        <h1 style={{ fontSize: "1.35rem", margin: 0, color: "#fef9f6" }}>Command Center</h1>
       </div>
       <nav style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         {navItems.map((item) => (
@@ -49,21 +49,20 @@ export function Sidebar(): JSX.Element {
             style={{
               padding: "0.75rem 1rem",
               borderRadius: "0.75rem",
-              color: pathname === item.href ? "#312e81" : "#475569",
-              backgroundColor: pathname === item.href
-                ? "rgba(196, 181, 253, 0.6)"
-                : "transparent",
+              color: pathname === item.href ? "#8b3921" : "#fdece0",
+              backgroundColor: pathname === item.href ? "#f7eada" : "rgba(255, 255, 255, 0.08)",
               textDecoration: "none",
               fontWeight: 600,
               transition: "all 0.2s ease",
-              border: pathname === item.href ? "1px solid rgba(99, 102, 241, 0.4)" : "1px solid transparent"
+              border: pathname === item.href ? "1px solid rgba(139, 57, 33, 0.35)" : "1px solid transparent",
+              backdropFilter: pathname === item.href ? "blur(2px)" : undefined
             }}
           >
             {item.label}
           </Link>
         ))}
       </nav>
-      <div style={{ marginTop: "auto", fontSize: "0.75rem", color: "#64748b" }}>
+      <div style={{ marginTop: "auto", fontSize: "0.75rem", color: "#f7dccc", lineHeight: 1.4 }}>
         <p style={{ margin: 0 }}>Secure multi-tenant workspace.</p>
         <p style={{ margin: 0 }}>MFA & RBAC enforced.</p>
       </div>

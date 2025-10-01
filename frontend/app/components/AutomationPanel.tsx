@@ -73,7 +73,7 @@ export async function AutomationPanel(): Promise<JSX.Element> {
             surface the next best actions across teams with deep links and suggested owners.
           </p>
         </div>
-        <Link href="/automation" style={{ color: "#6366f1", fontWeight: 600 }}>
+        <Link href="/automation" style={{ color: "#8b3921", fontWeight: 600, textDecoration: "none" }}>
           View full history →
         </Link>
       </div>
@@ -94,7 +94,7 @@ export async function AutomationPanel(): Promise<JSX.Element> {
                   justifyContent: "space-between",
                   alignItems: "flex-start",
                   gap: "1rem",
-                  borderBottom: "1px solid rgba(148,163,184,0.2)",
+                  borderBottom: "1px solid rgba(139,57,33,0.16)",
                   paddingBottom: "1rem"
                 }}
               >
@@ -105,8 +105,8 @@ export async function AutomationPanel(): Promise<JSX.Element> {
                     </span>
                     <span style={{ fontWeight: 600 }}>{task.summary}</span>
                   </div>
-                  {task.details && <p style={{ margin: 0, color: "#64748b" }}>{task.details}</p>}
-                  <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", fontSize: "0.85rem", color: "#64748b" }}>
+                  {task.details && <p style={{ margin: 0, color: "#8c6f63" }}>{task.details}</p>}
+                  <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", fontSize: "0.85rem", color: "#8c6f63" }}>
                     <span style={{ textTransform: "capitalize" }}>{task.category}</span>
                     {dueLabel && <span>{dueLabel}</span>}
                     {task.suggested_assignee && <span>Suggested: {task.suggested_assignee}</span>}
@@ -120,11 +120,12 @@ export async function AutomationPanel(): Promise<JSX.Element> {
                     gap: "0.5rem",
                     padding: "0.65rem 1rem",
                     borderRadius: "0.75rem",
-                    border: "1px solid rgba(129,140,248,0.4)",
-                    color: "#6366f1",
+                    border: "1px solid rgba(139,57,33,0.35)",
+                    color: "#8b3921",
                     fontWeight: 600,
                     textDecoration: "none",
-                    background: "rgba(255,255,255,0.6)"
+                    background: "rgba(247,234,218,0.65)",
+                    boxShadow: "0 8px 18px rgba(139,57,33,0.12)"
                   }}
                 >
                   {task.action_label ?? "Open module"}

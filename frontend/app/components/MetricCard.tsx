@@ -6,10 +6,10 @@ interface MetricCardProps {
 }
 
 const toneColors: Record<NonNullable<MetricCardProps["tone"]>, string> = {
-  default: "#4338ca",
-  success: "#16a34a",
-  warning: "#d97706",
-  danger: "#dc2626"
+  default: "#8b3921",
+  success: "#2f7d4f",
+  warning: "#c1611a",
+  danger: "#b3321b"
 };
 
 export function MetricCard({ title, value, helper, tone = "default" }: MetricCardProps): JSX.Element {
@@ -18,8 +18,8 @@ export function MetricCard({ title, value, helper, tone = "default" }: MetricCar
       <p className="text-muted" style={{ margin: 0, textTransform: "uppercase", letterSpacing: "0.08em", fontSize: "0.75rem" }}>
         {title}
       </p>
-      <p style={{ fontSize: "2rem", margin: "0.25rem 0", color: toneColors[tone] }}>{value}</p>
-      {helper && <p style={{ margin: 0, color: "#64748b", fontSize: "0.85rem" }}>{helper}</p>}
+      <p style={{ fontSize: "2.15rem", margin: "0.35rem 0", color: toneColors[tone], fontWeight: 600 }}>{value}</p>
+      {helper && <p style={{ margin: 0, color: "#8c6f63", fontSize: "0.85rem" }}>{helper}</p>}
     </div>
   );
 }

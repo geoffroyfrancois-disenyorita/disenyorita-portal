@@ -129,10 +129,10 @@ export default async function FinancialsPage(): Promise<JSX.Element> {
                 <td>{formatCurrency(record.total_invoiced, record.currency)}</td>
                 <td>{formatCurrency(record.total_collected, record.currency)}</td>
                 <td>{formatCurrency(record.total_expenses, record.currency)}</td>
-                <td style={{ color: record.outstanding_amount > 0 ? "#fcd34d" : "#64748b" }}>
+                <td style={{ color: record.outstanding_amount > 0 ? "#d4a017" : "#8c6f63" }}>
                   {formatCurrency(record.outstanding_amount, record.currency)}
                 </td>
-                <td style={{ color: record.net_revenue >= 0 ? "#16a34a" : "#fb7185" }}>
+                <td style={{ color: record.net_revenue >= 0 ? "#2f7d4f" : "#b3321b" }}>
                   {formatCurrency(record.net_revenue, record.currency)}
                 </td>
               </tr>
@@ -176,7 +176,7 @@ export default async function FinancialsPage(): Promise<JSX.Element> {
                     <Link
                       href={reminderTasks.get(invoice.id)!.url}
                       style={{
-                        color: "#6366f1",
+                        color: "#8b3921",
                         textDecoration: "none",
                         fontWeight: 600
                       }}
@@ -184,7 +184,7 @@ export default async function FinancialsPage(): Promise<JSX.Element> {
                       {reminderTasks.get(invoice.id)!.label}
                     </Link>
                   ) : (
-                    <span style={{ color: "#64748b" }}>—</span>
+                    <span style={{ color: "#8c6f63" }}>—</span>
                   )}
                 </td>
               </tr>
@@ -213,7 +213,7 @@ export default async function FinancialsPage(): Promise<JSX.Element> {
           <tbody>
             {pricingSuggestions.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: "center", color: "#64748b" }}>
+                <td colSpan={6} style={{ textAlign: "center", color: "#8c6f63" }}>
                   No pricing suggestions available yet. Add financial data to generate insights.
                 </td>
               </tr>
@@ -244,7 +244,7 @@ export default async function FinancialsPage(): Promise<JSX.Element> {
             display: "inline-flex",
             alignItems: "center",
             gap: "0.5rem",
-            color: "#6366f1",
+            color: "#8b3921",
             fontWeight: 600,
             textDecoration: "none"
           }}

@@ -88,31 +88,31 @@ function describeDueDate(value: string): { label: string; color: string } {
     const overdue = Math.abs(diffDays);
     return {
       label: `Overdue by ${overdue} day${overdue === 1 ? "" : "s"}`,
-      color: "#fb7185"
+      color: "#b3321b"
     };
   }
 
   if (diffDays === 0) {
-    return { label: "Due today", color: "#f97316" };
+    return { label: "Due today", color: "#c1611a" };
   }
 
   if (diffDays <= 14) {
     return {
       label: `Due in ${diffDays} day${diffDays === 1 ? "" : "s"}`,
-      color: "#f97316"
+      color: "#c1611a"
     };
   }
 
   if (diffDays <= 45) {
     return {
       label: `Due in ${diffDays} days`,
-      color: "#facc15"
+      color: "#d4a017"
     };
   }
 
   return {
     label: `Due in ${diffDays} days`,
-    color: "#22c55e"
+    color: "#2f7d4f"
   };
 }
 
@@ -149,9 +149,9 @@ function EntryList({
             style={{
               padding: "0.75rem",
               borderRadius: "0.75rem",
-              border: "1px solid rgba(148,163,184,0.45)",
-              background: "rgba(255,255,255,0.9)",
-              color: "#1f2937"
+              border: "1px solid rgba(139,57,33,0.28)",
+              background: "rgba(255,255,255,0.92)",
+              color: "#3f2216"
             }}
           />
           <input
@@ -162,9 +162,9 @@ function EntryList({
             style={{
               padding: "0.75rem",
               borderRadius: "0.75rem",
-              border: "1px solid rgba(148,163,184,0.45)",
-              background: "rgba(255,255,255,0.9)",
-              color: "#1f2937"
+                border: "1px solid rgba(139,57,33,0.28)",
+                background: "rgba(255,255,255,0.92)",
+                color: "#3f2216"
             }}
           />
           <button
@@ -174,7 +174,7 @@ function EntryList({
             style={{
               border: "none",
               background: "transparent",
-              color: "#cbd5f5",
+              color: "#f2d5c1",
               fontSize: "1.25rem",
               cursor: "pointer"
             }}
@@ -189,11 +189,12 @@ function EntryList({
         style={{
           padding: "0.75rem 1rem",
           borderRadius: "0.75rem",
-          border: "1px solid rgba(129,140,248,0.4)",
-          background: "rgba(255,255,255,0.6)",
-          color: "#6366f1",
+          border: "1px solid rgba(139,57,33,0.35)",
+          background: "rgba(247,234,218,0.85)",
+          color: "#8b3921",
           fontWeight: 600,
-          cursor: "pointer"
+          cursor: "pointer",
+          boxShadow: "0 10px 20px rgba(139,57,33,0.12)"
         }}
       >
         + Add entry
@@ -329,7 +330,7 @@ export default function TaxCalculatorPage(): JSX.Element {
 
   return (
     <div>
-      <Link href="/financials" style={{ color: "#6366f1", textDecoration: "none", fontWeight: 600 }}>
+      <Link href="/financials" style={{ color: "#8b3921", textDecoration: "none", fontWeight: 600 }}>
         ← Back to financial control
       </Link>
       <h2 className="section-title" style={{ marginTop: "1.5rem" }}>
@@ -375,7 +376,7 @@ export default function TaxCalculatorPage(): JSX.Element {
             </div>
           </div>
           {businessProfile.filing_frequencies.length > 0 && (
-            <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#475569" }}>
+            <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#6f4d3d" }}>
               {businessProfile.filing_frequencies.map((item) => (
                 <li key={item} style={{ marginBottom: "0.25rem" }}>
                   {item}
@@ -391,11 +392,11 @@ export default function TaxCalculatorPage(): JSX.Element {
                 gap: "0.5rem",
                 padding: "0.75rem 1rem",
                 borderRadius: "0.75rem",
-                background: "rgba(99, 102, 241, 0.08)",
+                background: "rgba(139, 57, 33, 0.12)",
               }}
             >
-              <strong style={{ color: "#312e81", fontSize: "0.9rem" }}>Compliance reminders</strong>
-              <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#3730a3" }}>
+              <strong style={{ color: "#8b3921", fontSize: "0.9rem" }}>Compliance reminders</strong>
+              <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#6f4d3d" }}>
                 {businessProfile.compliance_notes.map((note) => (
                   <li key={note} style={{ marginBottom: "0.25rem" }}>
                     {note}
@@ -429,8 +430,8 @@ export default function TaxCalculatorPage(): JSX.Element {
                     gap: "0.25rem",
                     padding: "0.75rem 1rem",
                     borderRadius: "0.75rem",
-                    border: "1px solid rgba(148,163,184,0.35)",
-                    background: "rgba(255,255,255,0.7)"
+                    border: "1px solid rgba(139,57,33,0.18)",
+                    background: "rgba(247,234,218,0.7)"
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
@@ -522,9 +523,9 @@ export default function TaxCalculatorPage(): JSX.Element {
               style={{
                 padding: "0.75rem",
                 borderRadius: "0.75rem",
-                border: "1px solid rgba(148,163,184,0.45)",
-                background: "rgba(255,255,255,0.9)",
-                color: "#1f2937"
+                border: "1px solid rgba(139,57,33,0.28)",
+                background: "rgba(255,255,255,0.92)",
+                color: "#3f2216"
               }}
             >
               <option value={1}>1% (CREATE relief for MSMEs)</option>
@@ -546,17 +547,17 @@ export default function TaxCalculatorPage(): JSX.Element {
             borderRadius: "0.75rem",
             border: "none",
             background: loading
-              ? "rgba(203, 213, 225, 0.7)"
-              : "linear-gradient(135deg, #a5b4fc, #fbcfe8)",
-            color: loading ? "#475569" : "#312e81",
+              ? "rgba(191, 171, 157, 0.5)"
+              : "linear-gradient(135deg, #8b3921, #c0694d)",
+            color: loading ? "#7c5c4b" : "#fffaf5",
             fontWeight: 700,
             cursor: loading ? "not-allowed" : "pointer",
-            boxShadow: loading ? "none" : "0 16px 32px rgba(165, 180, 252, 0.35)"
+            boxShadow: loading ? "none" : "0 18px 34px rgba(139, 57, 33, 0.35)"
           }}
         >
           {loading ? "Calculating…" : "Recalculate tax obligations"}
         </button>
-        {error && <p style={{ color: "#fb7185", margin: 0 }}>{error}</p>}
+        {error && <p style={{ color: "#b3321b", margin: 0 }}>{error}</p>}
       </div>
 
       <div className="card" style={{ marginTop: "2.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -568,11 +569,11 @@ export default function TaxCalculatorPage(): JSX.Element {
           </div>
           <div>
             <p className="text-muted" style={{ margin: 0 }}>Total expenses</p>
-            <p style={{ fontSize: "1.4rem", margin: "0.25rem 0", color: "#fb7185" }}>{formatCurrency(totalExpenses)}</p>
+            <p style={{ fontSize: "1.4rem", margin: "0.25rem 0", color: "#b3321b" }}>{formatCurrency(totalExpenses)}</p>
           </div>
           <div>
             <p className="text-muted" style={{ margin: 0 }}>Allowable deductions</p>
-            <p style={{ fontSize: "1.4rem", margin: "0.25rem 0", color: "#fcd34d" }}>{formatCurrency(totalDeductions)}</p>
+            <p style={{ fontSize: "1.4rem", margin: "0.25rem 0", color: "#d4a017" }}>{formatCurrency(totalDeductions)}</p>
           </div>
           <div>
             <p className="text-muted" style={{ margin: 0 }}>Projected taxable income</p>
@@ -587,30 +588,30 @@ export default function TaxCalculatorPage(): JSX.Element {
         <div className="card" style={{ marginTop: "2.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <h3 style={{ margin: 0 }}>Automated tax breakdown</h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
-            <div>
-              <p className="text-muted" style={{ margin: 0 }}>Income tax</p>
-              <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#fb7185" }}>
-                {formatCurrency(calculation.income_tax)}
-              </p>
-            </div>
-            <div>
-              <p className="text-muted" style={{ margin: 0 }}>Percentage tax</p>
-              <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#fcd34d" }}>
-                {formatCurrency(calculation.percentage_tax)}
-              </p>
-            </div>
-            <div>
-              <p className="text-muted" style={{ margin: 0 }}>VAT due</p>
-              <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#60a5fa" }}>
-                {formatCurrency(calculation.vat_due)}
-              </p>
-            </div>
-            <div>
-              <p className="text-muted" style={{ margin: 0 }}>Total estimated tax</p>
-              <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#fb7185" }}>
-                {formatCurrency(calculation.total_tax)}
-              </p>
-            </div>
+          <div>
+            <p className="text-muted" style={{ margin: 0 }}>Income tax</p>
+            <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#b3321b" }}>
+              {formatCurrency(calculation.income_tax)}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted" style={{ margin: 0 }}>Percentage tax</p>
+            <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#d4a017" }}>
+              {formatCurrency(calculation.percentage_tax)}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted" style={{ margin: 0 }}>VAT due</p>
+            <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#2f7d4f" }}>
+              {formatCurrency(calculation.vat_due)}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted" style={{ margin: 0 }}>Total estimated tax</p>
+            <p style={{ fontSize: "1.5rem", margin: "0.25rem 0", color: "#8b3921" }}>
+              {formatCurrency(calculation.total_tax)}
+            </p>
+          </div>
             <div>
               <p className="text-muted" style={{ margin: 0 }}>Effective tax rate</p>
               <p style={{ fontSize: "1.5rem", margin: "0.25rem 0" }}>{calculation.effective_tax_rate.toFixed(2)}%</p>
@@ -635,7 +636,7 @@ export default function TaxCalculatorPage(): JSX.Element {
                 <strong style={{ textTransform: "uppercase", letterSpacing: "0.05em", fontSize: "0.75rem" }}>
                   {tip.category}
                 </strong>
-                <p style={{ margin: "0.25rem 0 0", color: "#64748b" }}>{tip.message}</p>
+                <p style={{ margin: "0.25rem 0 0", color: "#8c6f63" }}>{tip.message}</p>
               </li>
             ))}
           </ul>

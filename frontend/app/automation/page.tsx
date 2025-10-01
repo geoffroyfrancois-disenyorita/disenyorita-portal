@@ -32,7 +32,7 @@ export default async function AutomationHistoryPage(): Promise<JSX.Element> {
         <tbody>
           {history.length === 0 ? (
             <tr>
-              <td colSpan={4} style={{ textAlign: "center", color: "#64748b" }}>
+              <td colSpan={4} style={{ textAlign: "center", color: "#8c6f63" }}>
                 No automation history recorded yet.
               </td>
             </tr>

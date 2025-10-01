@@ -155,7 +155,7 @@ export async function OperationsPanel(): Promise<JSX.Element> {
                       </span>
                     </div>
                     <p className="text-muted" style={{ margin: 0 }}>{incident.message}</p>
-                    <span style={{ fontSize: "0.8rem", color: "#94a3b8" }}>
+                    <span style={{ fontSize: "0.8rem", color: "#b08977" }}>
                       Triggered {new Date(incident.triggered_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </li>
