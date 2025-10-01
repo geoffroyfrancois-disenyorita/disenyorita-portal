@@ -988,10 +988,10 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
               >
                 <div
                   style={{
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid #f1d9cc",
                     borderRadius: "0.75rem",
                     padding: "1rem",
-                    background: "#f8fafc"
+                    background: "#fdf4ec"
                   }}
                 >
                   <h4 style={{ margin: "0 0 0.5rem 0" }}>Active sprint</h4>
@@ -1006,7 +1006,7 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                         <div
                           style={{
                             height: "8px",
-                            background: "#e2e8f0",
+                            background: "#f1d9cc",
                             borderRadius: "999px",
                             overflow: "hidden",
                             marginTop: "0.35rem"
@@ -1015,7 +1015,7 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                           <div
                             style={{
                               width: `${sprintProgress}%`,
-                              background: "#6366f1",
+                              background: "#8b3921",
                               height: "100%"
                             }}
                           />
@@ -1053,10 +1053,10 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                 </div>
                 <div
                   style={{
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid #f1d9cc",
                     borderRadius: "0.75rem",
                     padding: "1rem",
-                    background: "#f8fafc"
+                    background: "#fdf4ec"
                   }}
                 >
                   <h4 style={{ margin: "0 0 0.5rem 0" }}>Agile delivery metrics</h4>

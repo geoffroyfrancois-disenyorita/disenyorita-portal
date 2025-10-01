@@ -11,31 +11,32 @@ export function TopBar(): JSX.Element {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        padding: "1.5rem 2rem",
-        borderBottom: "1px solid rgba(196, 181, 253, 0.35)",
-        background: "rgba(255, 255, 255, 0.82)",
-        backdropFilter: "blur(14px)",
+        padding: "1.75rem 2.5rem",
+        borderBottom: "1px solid rgba(139, 57, 33, 0.18)",
+        background: "linear-gradient(90deg, rgba(255, 248, 241, 0.92), rgba(255, 255, 255, 0.76))",
+        backdropFilter: "blur(16px)",
         position: "sticky",
         top: 0,
         zIndex: 10
       }}
     >
       <div>
-        <h2 style={{ margin: 0, fontSize: "1.5rem" }}>Unified Operations</h2>
-        <p style={{ margin: 0, color: "#64748b", fontSize: "0.875rem" }}>Real-time overview for Disenyorita & Isla</p>
+        <h2 style={{ margin: 0, fontSize: "1.6rem", color: "#8b3921" }}>Unified Operations</h2>
+        <p style={{ margin: 0, color: "#8c6f63", fontSize: "0.9rem" }}>Real-time overview for Disenyorita & Isla</p>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
-        <span style={{ fontSize: "0.875rem", color: "#475569" }}>{now}</span>
+        <span style={{ fontSize: "0.9rem", color: "#6f4d3d", fontWeight: 500 }}>{now}</span>
         <div
           style={{
             display: "flex",
             gap: "0.5rem",
-            background: "rgba(129, 140, 248, 0.18)",
+            background: "rgba(139, 57, 33, 0.1)",
             borderRadius: "9999px",
-            padding: "0.35rem 0.75rem",
-            fontSize: "0.75rem",
-            color: "#6366f1",
-            fontWeight: 600
+            padding: "0.45rem 0.85rem",
+            fontSize: "0.78rem",
+            color: "#8b3921",
+            fontWeight: 600,
+            letterSpacing: "0.08em"
           }}
         >
           <span>RBAC</span>

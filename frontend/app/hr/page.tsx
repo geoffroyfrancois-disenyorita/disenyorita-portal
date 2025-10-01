@@ -85,7 +85,7 @@ export default async function PeoplePage(): Promise<JSX.Element> {
           <tbody>
             {timeOff.length === 0 ? (
               <tr>
-                <td colSpan={4} style={{ textAlign: "center", color: "#64748b" }}>
+                <td colSpan={4} style={{ textAlign: "center", color: "#8c6f63" }}>
                   No upcoming leave requests.
                 </td>
               </tr>
@@ -99,15 +99,15 @@ export default async function PeoplePage(): Promise<JSX.Element> {
                   <td style={{ textTransform: "capitalize" }}>{request.status}</td>
                   <td>
                     {timeOffActions.has(request.id) ? (
-                      <Link
-                        href={timeOffActions.get(request.id)!.url}
-                        style={{ color: "#6366f1", textDecoration: "none", fontWeight: 600 }}
-                      >
-                        {timeOffActions.get(request.id)!.label}
-                      </Link>
-                    ) : (
-                      <span style={{ color: "#64748b" }}>—</span>
-                    )}
+                    <Link
+                      href={timeOffActions.get(request.id)!.url}
+                      style={{ color: "#8b3921", textDecoration: "none", fontWeight: 600 }}
+                    >
+                      {timeOffActions.get(request.id)!.label}
+                    </Link>
+                  ) : (
+                    <span style={{ color: "#8c6f63" }}>—</span>
+                  )}
                   </td>
                 </tr>
               ))

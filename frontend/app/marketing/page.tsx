@@ -60,16 +60,16 @@ export default async function MarketingPage(): Promise<JSX.Element> {
               <li key={task.id} style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
                 <div>
                   <p style={{ margin: 0, fontWeight: 600 }}>{task.summary}</p>
-                  {task.details && <p style={{ margin: "0.25rem 0", color: "#64748b" }}>{task.details}</p>}
+                  {task.details && <p style={{ margin: "0.25rem 0", color: "#8c6f63" }}>{task.details}</p>}
                   {task.due_at && (
-                    <p style={{ margin: 0, fontSize: "0.85rem", color: "#64748b" }}>
+                    <p style={{ margin: 0, fontSize: "0.85rem", color: "#8c6f63" }}>
                       Due {new Date(task.due_at).toLocaleString()}
                     </p>
                   )}
                 </div>
                 <Link
                   href={task.action_url ?? "/marketing"}
-                  style={{ color: "#6366f1", fontWeight: 600, textDecoration: "none", alignSelf: "center" }}
+                  style={{ color: "#8b3921", fontWeight: 600, textDecoration: "none", alignSelf: "center" }}
                 >
                   {task.action_label ?? "Open"}
                 </Link>
