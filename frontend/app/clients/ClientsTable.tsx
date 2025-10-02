@@ -189,8 +189,16 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
     );
   }, [formState]);
 
+  const modalBadgeVariant = isSubmitting ? "info" : canSubmit ? "success" : "warning";
+  const modalStatusLabel = isSubmitting ? "Submitting…" : canSubmit ? "Ready to submit" : "Fill required fields";
+
   const handleClose = () => {
     setIsModalOpen(false);
+    setFormState(initialFormState());
+    setError(null);
+  };
+
+  const handleModalReset = () => {
     setFormState(initialFormState());
     setError(null);
   };
@@ -423,34 +431,58 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                 Close
               </button>
             </div>
+            <div className="editor-toolbar editor-toolbar--compact modal-toolbar">
+              <div>
+                <h4 className="editor-toolbar-title">Client onboarding</h4>
+                <p className="editor-toolbar-description">
+                  Capture the essentials to spin up a workspace and kickoff project.
+                </p>
+              </div>
+              <div className="editor-toolbar-actions">
+                <span className={`badge ${modalBadgeVariant}`}>{modalStatusLabel}</span>
+                <button
+                  type="button"
+                  className="button ghost"
+                  onClick={handleModalReset}
+                  disabled={isSubmitting}
+                >
+                  Clear form
+                </button>
+              </div>
+            </div>
             <form className="form" onSubmit={handleSubmit}>
               <fieldset className="form-section">
                 <legend>Organization</legend>
                 <div className="form-grid">
                   <label>
-                    <span>Organization name</span>
+                    <span className="form-label">Organization name</span>
+                    <span className="form-helper">Legal or DBA name used on proposals and invoices.</span>
                     <input
                       type="text"
                       value={formState.organization_name}
                       onChange={(event) =>
                         setFormState((prev) => ({ ...prev, organization_name: event.target.value }))
                       }
+                      placeholder="e.g. Sunrise Hospitality Group"
                       required
                     />
                   </label>
                   <label>
-                    <span>Billing email</span>
+                    <span className="form-label">Billing email</span>
+                    <span className="form-helper">Primary finance contact for statements and receipts.</span>
                     <input
                       type="email"
                       value={formState.billing_email}
                       onChange={(event) =>
                         setFormState((prev) => ({ ...prev, billing_email: event.target.value }))
                       }
+                      placeholder="finance@client.com"
                       required
                     />
                   </label>
                   <label>
-                    <span>Industry</span>
+                    <span className="form-label">Industry</span>
+                    <span className="form-helper">Tailors benchmarks and suggested playbooks.</span>
                     <select
                       value={formState.industry}
                       onChange={(event) =>
@@ -465,7 +497,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                     </select>
                   </label>
                   <label>
-                    <span>Segment</span>
+                    <span className="form-label">Segment</span>
+                    <span className="form-helper">Helps triage success playbooks and service tiers.</span>
                     <select
                       value={formState.segment}
                       onChange={(event) =>
@@ -480,7 +513,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                     </select>
                   </label>
                   <label>
-                    <span>Preferred channel</span>
+                    <span className="form-label">Preferred channel</span>
+                    <span className="form-helper">Where the account team should reach out by default.</span>
                     <select
                       value={formState.preferred_channel}
                       onChange={(event) =>
@@ -498,7 +532,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                     </select>
                   </label>
                   <label>
-                    <span>Timezone</span>
+                    <span className="form-label">Timezone</span>
+                    <span className="form-helper">Keep scheduling aligned with the client team.</span>
                     <input
                       type="text"
                       value={formState.timezone}
@@ -515,7 +550,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                 <legend>Primary contact</legend>
                 <div className="form-grid">
                   <label>
-                    <span>First name</span>
+                    <span className="form-label">First name</span>
+                    <span className="form-helper">Primary relationship owner on the client side.</span>
                     <input
                       type="text"
                       value={formState.contact.first_name}
@@ -528,7 +564,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                     />
                   </label>
                   <label>
-                    <span>Last name</span>
+                    <span className="form-label">Last name</span>
+                    <span className="form-helper">Helps personalize automated communications.</span>
                     <input
                       type="text"
                       value={formState.contact.last_name}
@@ -541,7 +578,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                     />
                   </label>
                   <label>
-                    <span>Email</span>
+                    <span className="form-label">Email</span>
+                    <span className="form-helper">We'll send kickoff notes and status digests here.</span>
                     <input
                       type="email"
                       value={formState.contact.email}
@@ -554,7 +592,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                     />
                   </label>
                   <label>
-                    <span>Phone</span>
+                    <span className="form-label">Phone</span>
+                    <span className="form-helper">Optional. Add for urgent SMS or call updates.</span>
                     <input
                       type="tel"
                       value={formState.contact.phone}
@@ -568,7 +607,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                     />
                   </label>
                   <label>
-                    <span>Title</span>
+                    <span className="form-label">Title</span>
+                    <span className="form-helper">Optional role for context in reports.</span>
                     <input
                       type="text"
                       value={formState.contact.title}
@@ -588,7 +628,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                 <legend>Initial project</legend>
                 <div className="form-grid">
                   <label>
-                    <span>Project name</span>
+                    <span className="form-label">Project name</span>
+                    <span className="form-helper">How the engagement will appear across dashboards.</span>
                     <input
                       type="text"
                       value={formState.project.name}
@@ -598,11 +639,13 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                           project: { ...prev.project, name: event.target.value }
                         }))
                       }
+                      placeholder="e.g. Midtown hotel launch"
                       required
                     />
                   </label>
                   <label>
-                    <span>Project type</span>
+                    <span className="form-label">Project type</span>
+                    <span className="form-helper">Select the template that matches this kickoff.</span>
                     <select
                       value={formState.project.project_type}
                       onChange={(event) =>
@@ -620,7 +663,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                     </select>
                   </label>
                   <label>
-                    <span>Start date</span>
+                    <span className="form-label">Start date</span>
+                    <span className="form-helper">We’ll schedule milestones starting from this day.</span>
                     <input
                       type="date"
                       value={formState.project.start_date}
@@ -634,7 +678,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                     />
                   </label>
                   <label>
-                    <span>Project manager ID</span>
+                    <span className="form-label">Project manager ID</span>
+                    <span className="form-helper">Assign the delivery lead responsible for execution.</span>
                     <input
                       type="text"
                       value={formState.project.manager_id}
@@ -644,11 +689,13 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                           project: { ...prev.project, manager_id: event.target.value }
                         }))
                       }
+                      placeholder="e.g. pm-104"
                       required
                     />
                   </label>
                   <label>
-                    <span>Budget (USD)</span>
+                    <span className="form-label">Budget</span>
+                    <span className="form-helper">Accepted budget for the initial scope.</span>
                     <input
                       type="number"
                       min="0"
@@ -660,11 +707,13 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                           project: { ...prev.project, budget: event.target.value }
                         }))
                       }
+                      placeholder="e.g. 50000"
                       required
                     />
                   </label>
                   <label>
-                    <span>Currency</span>
+                    <span className="form-label">Currency</span>
+                    <span className="form-helper">Optional. Defaults to USD.</span>
                     <input
                       type="text"
                       value={formState.project.currency}
@@ -674,10 +723,12 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                           project: { ...prev.project, currency: event.target.value }
                         }))
                       }
+                      placeholder="USD"
                     />
                   </label>
-                  <label>
-                    <span>Starts after (optional dependency)</span>
+                  <label className="full-width">
+                    <span className="form-label">Starts after (optional dependency)</span>
+                    <span className="form-helper">Reference another project that must finish before this one.</span>
                     <input
                       type="text"
                       value={formState.project.start_after}

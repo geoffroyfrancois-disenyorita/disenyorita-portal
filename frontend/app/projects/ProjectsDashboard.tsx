@@ -294,6 +294,16 @@ function createTemplateMilestoneRow(): TemplateMilestoneRow {
   };
 }
 
+function createInitialTemplateForm(): TemplateFormState {
+  return {
+    templateId: "",
+    codePrefix: "",
+    overwrite: false,
+    tasks: [createTemplateTaskRow()],
+    milestones: []
+  };
+}
+
 export default function ProjectsDashboard({ initialProjects }: ProjectsDashboardProps): JSX.Element {
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
@@ -322,13 +332,36 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
   const [templateMessage, setTemplateMessage] = useState<string | null>(null);
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
-  const [templateForm, setTemplateForm] = useState<TemplateFormState>({
-    templateId: "",
-    codePrefix: "",
-    overwrite: false,
-    tasks: [createTemplateTaskRow()],
-    milestones: []
-  });
+  const [templateForm, setTemplateForm] = useState<TemplateFormState>(() => createInitialTemplateForm());
+
+  const baselineProjectForm = useMemo(() => {
+    return selectedProject ? createProjectFormState(selectedProject) : null;
+  }, [selectedProject]);
+
+  const baselineTaskEdits = useMemo(() => {
+    return selectedProject ? selectedProject.tasks.map(createTaskEditState) : [];
+  }, [selectedProject]);
+
+  const hasProjectChanges = useMemo(() => {
+    if (!projectForm || !baselineProjectForm) {
+      return false;
+    }
+    return JSON.stringify(projectForm) !== JSON.stringify(baselineProjectForm);
+  }, [projectForm, baselineProjectForm]);
+
+  const hasTaskChanges = useMemo(() => {
+    if (!selectedProject) {
+      return false;
+    }
+    return JSON.stringify(taskEdits) !== JSON.stringify(baselineTaskEdits);
+  }, [taskEdits, baselineTaskEdits, selectedProject]);
+
+  const hasUnsavedChanges = hasProjectChanges || hasTaskChanges;
+
+  const templateBaselineJson = useMemo(() => JSON.stringify(createInitialTemplateForm()), []);
+  const templateHasChanges = useMemo(() => {
+    return JSON.stringify(templateForm) !== templateBaselineJson;
+  }, [templateForm, templateBaselineJson]);
 
   useEffect(() => {
     let active = true;
@@ -527,6 +560,40 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
       }))
     : [];
 
+  const completedTaskCount = useMemo(() => {
+    if (!selectedProject) {
+      return 0;
+    }
+    return selectedProject.tasks.filter((task) => normalizeTaskStatus(task.status) === "done").length;
+  }, [selectedProject]);
+
+  const upcomingMilestone = useMemo(() => {
+    if (!selectedProject) {
+      return null;
+    }
+    const pending = selectedProject.milestones.filter((milestone) => !milestone.completed);
+    if (pending.length === 0) {
+      return null;
+    }
+    return [...pending].sort(
+      (a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
+    )[0];
+  }, [selectedProject]);
+
+  const completionRate = selectedProject && selectedProject.tasks.length
+    ? Math.round((completedTaskCount / selectedProject.tasks.length) * 100)
+    : 0;
+  const backlogCount = agileSummary?.unscheduled ?? 0;
+  const nextMilestoneLabel = upcomingMilestone
+    ? `${upcomingMilestone.title} · ${formatDate(upcomingMilestone.due_date)}`
+    : "All milestones delivered";
+  const sprintFocusLabel = activeSprintDetails?.sprint
+    ? activeSprintDetails.sprint.name
+    : "No sprint selected";
+  const burndownLabel = agileSummary
+    ? `${Math.max(agileSummary.remainingPoints, 0)} pts remaining`
+    : "Story points pending";
+
   const templateIdOptions = useMemo(() => {
     const identifiers = new Set<string>();
     templates.forEach((template) => identifiers.add(template.template_id));
@@ -707,6 +774,22 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
         milestoneIndex === index ? { ...milestone, [field]: value } : milestone
       )
     }));
+  };
+
+  const handleProjectReset = () => {
+    if (!baselineProjectForm) {
+      return;
+    }
+    setProjectForm({ ...baselineProjectForm });
+    setTaskEdits(baselineTaskEdits.map((task) => ({ ...task })));
+    setProjectMessage(null);
+    setProjectError(null);
+  };
+
+  const handleTemplateReset = () => {
+    setTemplateForm(createInitialTemplateForm());
+    setTemplateMessage(null);
+    setTemplateError(null);
   };
 
   const addTemplateTask = () => {
@@ -977,6 +1060,53 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
               </div>
             </div>
 
+            <div className="editor-toolbar">
+              <div>
+                <h4 className="editor-toolbar-title">Delivery controls</h4>
+                <p className="editor-toolbar-description">
+                  Adjust project metadata and sprint assignments. Changes are staged until you save.
+                </p>
+              </div>
+              <div className="editor-toolbar-actions">
+                <span className={`badge ${hasUnsavedChanges ? "warning" : "success"}`}>
+                  {hasUnsavedChanges ? "Unsaved changes" : "Up to date"}
+                </span>
+                <button
+                  type="button"
+                  className="button ghost"
+                  onClick={handleProjectReset}
+                  disabled={!hasUnsavedChanges || savingProject}
+                >
+                  Reset edits
+                </button>
+              </div>
+            </div>
+
+            <div className="editor-summary">
+              <div className="editor-summary-item">
+                <span className="editor-summary-label">Task completion</span>
+                <strong>{completionRate}%</strong>
+                <span className="editor-summary-helper">
+                  {completedTaskCount} of {selectedProject.tasks.length} tasks
+                </span>
+              </div>
+              <div className="editor-summary-item">
+                <span className="editor-summary-label">Backlog without sprint</span>
+                <strong>{backlogCount}</strong>
+                <span className="editor-summary-helper">Ready to triage</span>
+              </div>
+              <div className="editor-summary-item">
+                <span className="editor-summary-label">Next milestone</span>
+                <strong>{nextMilestoneLabel}</strong>
+                <span className="editor-summary-helper">Keep stakeholders aligned</span>
+              </div>
+              <div className="editor-summary-item">
+                <span className="editor-summary-label">Active sprint</span>
+                <strong>{sprintFocusLabel}</strong>
+                <span className="editor-summary-helper">{burndownLabel}</span>
+              </div>
+            </div>
+
             {agileSummary ? (
               <div
                 style={{
@@ -1125,21 +1255,25 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                 <legend>Project Overview</legend>
                 <div className="form-grid">
                   <label>
-                    Project Name
+                    <span className="form-label">Project name</span>
+                    <span className="form-helper">Client-facing name shown on status reports.</span>
                     <input
                       value={projectForm.name}
                       onChange={(event) => handleProjectFieldChange("name", event.target.value)}
                     />
                   </label>
                   <label>
-                    Engagement Lead
+                    <span className="form-label">Engagement lead</span>
+                    <span className="form-helper">Owner responsible for project delivery.</span>
                     <input
                       value={projectForm.manager_id}
                       onChange={(event) => handleProjectFieldChange("manager_id", event.target.value)}
+                      placeholder="e.g. lead-42"
                     />
                   </label>
                   <label>
-                    Start Date
+                    <span className="form-label">Start date</span>
+                    <span className="form-helper">Kickoff date anchoring sprint plans.</span>
                     <input
                       type="date"
                       value={projectForm.start_date}
@@ -1147,24 +1281,29 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                     />
                   </label>
                   <label>
-                    Budget
+                    <span className="form-label">Budget</span>
+                    <span className="form-helper">Total approved budget for the engagement.</span>
                     <input
                       type="number"
                       min="0"
                       step="0.01"
                       value={projectForm.budget}
                       onChange={(event) => handleProjectFieldChange("budget", event.target.value)}
+                      placeholder="e.g. 125000"
                     />
                   </label>
                   <label>
-                    Currency
+                    <span className="form-label">Currency</span>
+                    <span className="form-helper">ISO currency code used for reporting.</span>
                     <input
                       value={projectForm.currency}
                       onChange={(event) => handleProjectFieldChange("currency", event.target.value.toUpperCase())}
+                      placeholder="USD"
                     />
                   </label>
                   <label>
-                    Status
+                    <span className="form-label">Status</span>
+                    <span className="form-helper">Summarize the overall health of the project.</span>
                     <select
                       value={projectForm.status}
                       onChange={(event) =>
@@ -1179,7 +1318,8 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                     </select>
                   </label>
                   <label>
-                    Template
+                    <span className="form-label">Template</span>
+                    <span className="form-helper">Sync delivery cadence with a reusable blueprint.</span>
                     <select
                       value={projectForm.template_id}
                       onChange={(event) => handleProjectFieldChange("template_id", event.target.value)}
@@ -1219,7 +1359,7 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                   </div>
                 </div>
                 <div className="table-scroll">
-                  <table className="table">
+                  <table className="table table-editor">
                     <thead>
                       <tr>
                         <th>Task</th>
@@ -1452,12 +1592,35 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
         {templateMessage ? <div className="form-feedback success">{templateMessage}</div> : null}
         {templateError ? <div className="form-feedback error">{templateError}</div> : null}
 
+        <div className="editor-toolbar editor-toolbar--compact">
+          <div>
+            <h4 className="editor-toolbar-title">Template builder</h4>
+            <p className="editor-toolbar-description">
+              Capture the reusable steps your team follows for new engagements.
+            </p>
+          </div>
+          <div className="editor-toolbar-actions">
+            <span className={`badge ${templateHasChanges ? "warning" : "info"}`}>
+              {templateHasChanges ? "Draft in progress" : "Fresh template"}
+            </span>
+            <button
+              type="button"
+              className="button ghost"
+              onClick={handleTemplateReset}
+              disabled={!templateHasChanges || creatingTemplate}
+            >
+              Reset form
+            </button>
+          </div>
+        </div>
+
         <form className="form" onSubmit={handleTemplateSubmit}>
           <fieldset className="form-section">
             <legend>Template Details</legend>
             <div className="form-grid">
               <label>
-                Template ID
+                <span className="form-label">Template ID</span>
+                <span className="form-helper">Unique identifier used by automations and APIs.</span>
                 <input
                   value={templateForm.templateId}
                   onChange={(event) => handleTemplateFieldChange("templateId", event.target.value)}
@@ -1465,20 +1628,23 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                 />
               </label>
               <label>
-                Code Prefix
+                <span className="form-label">Code prefix</span>
+                <span className="form-helper">Initial code applied to generated project numbers.</span>
                 <input
                   value={templateForm.codePrefix}
                   onChange={(event) => handleTemplateFieldChange("codePrefix", event.target.value.toUpperCase())}
                   placeholder="e.g. LCH"
                 />
               </label>
-              <label style={{ alignSelf: "flex-end" }}>
-                <span>Allow Overwrite</span>
+              <label className="form-checkbox">
+                <div className="form-checkbox-text">
+                  <span className="form-label">Allow overwrite</span>
+                  <span className="form-helper">Replace an existing template with the same ID.</span>
+                </div>
                 <input
                   type="checkbox"
                   checked={templateForm.overwrite}
                   onChange={(event) => handleTemplateFieldChange("overwrite", event.target.checked)}
-                  style={{ width: "auto" }}
                 />
               </label>
             </div>
@@ -1490,14 +1656,17 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
               {templateForm.tasks.map((task, index) => (
                 <div key={`task-${index}`} className="form-grid">
                   <label>
-                    Task Name
+                    <span className="form-label">Task name</span>
+                    <span className="form-helper">Visible card title on the delivery board.</span>
                     <input
                       value={task.name}
                       onChange={(event) => handleTemplateTaskChange(index, "name", event.target.value)}
+                      placeholder="e.g. Kick-off workshop"
                     />
                   </label>
                   <label>
-                    Duration (days)
+                    <span className="form-label">Duration (days)</span>
+                    <span className="form-helper">Used to forecast due dates once scheduled.</span>
                     <input
                       type="number"
                       min="1"
@@ -1506,7 +1675,8 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                     />
                   </label>
                   <label>
-                    Status
+                    <span className="form-label">Status</span>
+                    <span className="form-helper">Default workflow state when the template is applied.</span>
                     <select
                       value={task.status}
                       onChange={(event) => handleTemplateTaskChange(index, "status", normalizeTaskStatus(event.target.value))}
@@ -1519,7 +1689,8 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                     </select>
                   </label>
                   <label>
-                    Type
+                    <span className="form-label">Type</span>
+                    <span className="form-helper">Categorize work for dashboards and filters.</span>
                     <select
                       value={task.type}
                       onChange={(event) => handleTemplateTaskChange(index, "type", normalizeTaskType(event.target.value))}
@@ -1532,7 +1703,8 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                     </select>
                   </label>
                   <label>
-                    Priority
+                    <span className="form-label">Priority</span>
+                    <span className="form-helper">Set urgency for scheduling and alerts.</span>
                     <select
                       value={task.priority}
                       onChange={(event) =>
@@ -1546,16 +1718,18 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                       ))}
                     </select>
                   </label>
-                  <label>
-                    Depends On
+                  <label className="full-width">
+                    <span className="form-label">Depends on</span>
+                    <span className="form-helper">Comma-separated list of prerequisite task names.</span>
                     <input
                       value={task.dependsText}
                       onChange={(event) => handleTemplateTaskChange(index, "dependsText", event.target.value)}
-                      placeholder="Comma-separated tasks"
+                      placeholder="Design brief, Brand approval"
                     />
                   </label>
                   <label>
-                    Estimated Hours
+                    <span className="form-label">Estimated hours</span>
+                    <span className="form-helper">Optional planning input for capacity charts.</span>
                     <input
                       type="number"
                       min="0"
@@ -1564,7 +1738,8 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                     />
                   </label>
                   <label>
-                    Story Points
+                    <span className="form-label">Story points</span>
+                    <span className="form-helper">Great for agile burndown forecasts.</span>
                     <input
                       type="number"
                       min="0"
@@ -1573,17 +1748,20 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                       onChange={(event) => handleTemplateTaskChange(index, "storyPoints", event.target.value)}
                     />
                   </label>
-                  <label>
-                    Billable
+                  <label className="form-checkbox">
+                    <div className="form-checkbox-text">
+                      <span className="form-label">Billable</span>
+                      <span className="form-helper">Mark tasks as billable by default.</span>
+                    </div>
                     <input
                       type="checkbox"
                       checked={task.billable}
                       onChange={(event) => handleTemplateTaskChange(index, "billable", event.target.checked)}
-                      style={{ width: "auto" }}
                     />
                   </label>
                   <label>
-                    Default Leader
+                    <span className="form-label">Default leader</span>
+                    <span className="form-helper">Optional owner automatically assigned.</span>
                     <input
                       value={task.leaderId}
                       onChange={(event) => handleTemplateTaskChange(index, "leaderId", event.target.value)}
@@ -1615,14 +1793,17 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
               {templateForm.milestones.map((milestone, index) => (
                 <div key={`milestone-${index}`} className="form-grid">
                   <label>
-                    Title
+                    <span className="form-label">Title</span>
+                    <span className="form-helper">Displayed on client status reports.</span>
                     <input
                       value={milestone.title}
                       onChange={(event) => handleTemplateMilestoneChange(index, "title", event.target.value)}
+                      placeholder="e.g. Design approval"
                     />
                   </label>
                   <label>
-                    Offset (days)
+                    <span className="form-label">Offset (days)</span>
+                    <span className="form-helper">How many days after project start this milestone occurs.</span>
                     <input
                       type="number"
                       min="0"
