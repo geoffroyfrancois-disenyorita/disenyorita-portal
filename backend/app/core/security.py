@@ -5,6 +5,7 @@ import jwt
 from passlib.context import CryptContext
 
 from .config import get_settings
+from .datetime_utils import utc_now
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -13,7 +14,7 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
     settings = get_settings()
     if expires_delta is None:
         expires_delta = timedelta(minutes=settings.access_token_expire_minutes)
-    expire = datetime.utcnow() + expires_delta
+    expire = utc_now() + expires_delta
     payload: Dict[str, Any] = {"exp": expire, "sub": str(subject)}
     encoded_jwt = jwt.encode(payload, settings.secret_key, algorithm=settings.security_algorithm)
     return encoded_jwt

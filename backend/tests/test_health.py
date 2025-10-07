@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import inspect
 from pathlib import Path
 import sys
@@ -47,7 +47,7 @@ def test_dashboard_snapshot() -> None:
 
 
 def test_financial_summary_outstanding_reflects_partial_payments() -> None:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     invoice = Invoice(
         client_id="test-client",
         project_id=None,
