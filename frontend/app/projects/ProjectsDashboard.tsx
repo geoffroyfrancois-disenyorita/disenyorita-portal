@@ -229,6 +229,13 @@ interface TemplateFormState {
   milestones: TemplateMilestoneRow[];
 }
 
+interface TemplateAssignment {
+  id: string;
+  templateId: string;
+  startDate: string;
+  price: string;
+}
+
 type TaskUpdateInput = ProjectUpdatePayload["tasks"] extends (infer R)[] ? R : never;
 
 function normalizeTaskStatus(value: string): TaskStatus {
@@ -304,6 +311,26 @@ function createInitialTemplateForm(): TemplateFormState {
   };
 }
 
+function generateLocalId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    try {
+      return crypto.randomUUID();
+    } catch (error) {
+      console.warn("Unable to generate UUID via crypto.randomUUID", error);
+    }
+  }
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function createTemplateAssignment(initial?: Partial<Omit<TemplateAssignment, "id">>): TemplateAssignment {
+  return {
+    id: generateLocalId(),
+    templateId: initial?.templateId ?? "",
+    startDate: initial?.startDate ?? "",
+    price: initial?.price ?? ""
+  };
+}
+
 export default function ProjectsDashboard({ initialProjects }: ProjectsDashboardProps): JSX.Element {
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
@@ -333,6 +360,21 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [templateForm, setTemplateForm] = useState<TemplateFormState>(() => createInitialTemplateForm());
+  const [templateAssignments, setTemplateAssignments] = useState<TemplateAssignment[]>(() => {
+    if (initialProjects.length === 0) {
+      return [];
+    }
+
+    const first = initialProjects[0];
+    return [
+      createTemplateAssignment({
+        templateId: first.project_type,
+        startDate: isoToDateInput(first.start_date),
+        price:
+          first.budget !== undefined && first.budget !== null ? String(first.budget) : ""
+      })
+    ];
+  });
 
   const baselineProjectForm = useMemo(() => {
     return selectedProject ? createProjectFormState(selectedProject) : null;
@@ -396,9 +438,20 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
     if (selectedProject) {
       setProjectForm(createProjectFormState(selectedProject));
       setTaskEdits(selectedProject.tasks.map(createTaskEditState));
+      setTemplateAssignments([
+        createTemplateAssignment({
+          templateId: selectedProject.project_type,
+          startDate: isoToDateInput(selectedProject.start_date),
+          price:
+            selectedProject.budget !== undefined && selectedProject.budget !== null
+              ? String(selectedProject.budget)
+              : ""
+        })
+      ]);
     } else {
       setProjectForm(null);
       setTaskEdits([]);
+      setTemplateAssignments([]);
     }
   }, [selectedProject]);
 
@@ -602,6 +655,26 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
     }
     return Array.from(identifiers).sort();
   }, [templates, selectedProject]);
+
+  const handleTemplateAssignmentChange = <Field extends "templateId" | "startDate" | "price">(
+    assignmentId: string,
+    field: Field,
+    value: TemplateAssignment[Field]
+  ) => {
+    setTemplateAssignments((prev) =>
+      prev.map((assignment) =>
+        assignment.id === assignmentId ? { ...assignment, [field]: value } : assignment
+      )
+    );
+  };
+
+  const handleAddTemplateAssignment = () => {
+    setTemplateAssignments((prev) => [...prev, createTemplateAssignment()]);
+  };
+
+  const handleRemoveTemplateAssignment = (assignmentId: string) => {
+    setTemplateAssignments((prev) => prev.filter((assignment) => assignment.id !== assignmentId));
+  };
 
   const taskEditMap = useMemo(() => {
     return taskEdits.reduce<Record<string, ProjectTaskEditState>>((accumulator, task) => {
@@ -1332,6 +1405,83 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
                       ))}
                     </select>
                   </label>
+                  <div className="full-width template-assignment-block">
+                    <div className="template-assignment-header">
+                      <span className="form-label">Template lineup</span>
+                      <span className="form-helper">
+                        Combine multiple blueprints at once and capture scheduling and pricing per track.
+                      </span>
+                    </div>
+                    <div className="template-assignment-list">
+                      {templateAssignments.length === 0 ? (
+                        <p className="text-muted" style={{ margin: 0 }}>
+                          No templates selected yet. Add a template below to start planning parallel projects.
+                        </p>
+                      ) : (
+                        templateAssignments.map((assignment, index) => (
+                          <div key={assignment.id} className="template-assignment-row">
+                            <label>
+                              <span className="form-label">Template {index + 1}</span>
+                              <select
+                                value={assignment.templateId}
+                                onChange={(event) =>
+                                  handleTemplateAssignmentChange(assignment.id, "templateId", event.target.value)
+                                }
+                                disabled={templatesLoading && templates.length === 0}
+                              >
+                                <option value="">Select template</option>
+                                {templateIdOptions.map((identifier) => (
+                                  <option key={identifier} value={identifier}>
+                                    {formatLabel(identifier)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span className="form-label">Kickoff date</span>
+                              <input
+                                type="date"
+                                value={assignment.startDate}
+                                onChange={(event) =>
+                                  handleTemplateAssignmentChange(assignment.id, "startDate", event.target.value)
+                                }
+                              />
+                            </label>
+                            <label>
+                              <span className="form-label">Price</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={assignment.price}
+                                onChange={(event) =>
+                                  handleTemplateAssignmentChange(assignment.id, "price", event.target.value)
+                                }
+                                placeholder="e.g. 4500"
+                              />
+                            </label>
+                            <div className="template-assignment-actions">
+                              <button
+                                type="button"
+                                className="button ghost"
+                                onClick={() => handleRemoveTemplateAssignment(assignment.id)}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="button ghost"
+                      onClick={handleAddTemplateAssignment}
+                      style={{ alignSelf: "flex-start" }}
+                    >
+                      Add template
+                    </button>
+                  </div>
                 </div>
               </fieldset>
 

@@ -366,6 +366,53 @@ main {
   box-shadow: 0 0 0 3px rgba(192, 105, 77, 0.25);
 }
 
+.template-assignment-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem 1.1rem;
+  border: 1px dashed rgba(139, 57, 33, 0.35);
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.template-assignment-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.template-assignment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.template-assignment-row {
+  display: grid;
+  gap: 0.85rem;
+}
+
+@media (min-width: 768px) {
+  .template-assignment-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: end;
+  }
+}
+
+.template-assignment-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.template-assignment-actions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+}
+
 .editor-toolbar {
   display: flex;
   flex-direction: column;
