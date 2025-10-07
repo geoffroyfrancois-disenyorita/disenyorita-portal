@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from uuid import uuid4
@@ -115,7 +116,7 @@ PH_TAX_BRACKETS: Sequence[Dict[str, float]] = (
 
 
 class InMemoryStore:
-    def __init__(self) -> None:
+    def __init__(self, *, seed_demo_data: bool | None = None) -> None:
         now = datetime.utcnow()
         self.clients: Dict[str, Client] = {}
         self.projects: Dict[str, Project] = {}
@@ -154,6 +155,14 @@ class InMemoryStore:
         }
         self._tax_profile_updated_at = now
 
+        if seed_demo_data is None:
+            env_value = os.getenv("DISENYORITA_SEED_DEMO_DATA", "")
+            seed_demo_data = env_value.lower() in {"1", "true", "yes", "on"}
+
+        if seed_demo_data:
+            self._seed_demo_data(now)
+
+    def _seed_demo_data(self, now: datetime) -> None:
         # Seed clients
         disenyorita_client = Client(
             organization_name="Sunset Boutique Hotel",
