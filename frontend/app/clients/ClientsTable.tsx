@@ -8,10 +8,12 @@ import {
   api,
   Client,
   ClientCreateRequest,
+  ClientRevenueProfile,
   ClientSegment,
   ContactInput,
   Industry,
-  InteractionChannel
+  InteractionChannel,
+  RevenueClassification
 } from "../../lib/api";
 
 interface ClientsTableProps {
@@ -40,6 +42,15 @@ interface ClientFormState {
     budget: string;
     currency: string;
     start_after: string;
+  };
+  revenue: {
+    classification: RevenueClassification;
+    amount: string;
+    currency: string;
+    autopay: boolean;
+    next_payment_due: string;
+    payment_count: string;
+    remaining_balance: string;
   };
 }
 
@@ -83,6 +94,46 @@ const segmentBadgeClasses: Record<ClientSegment, string> = {
   vip: "warning",
   prospect: "info"
 };
+
+const revenueLabels: Record<RevenueClassification, string> = {
+  monthly_subscription: "Monthly subscription",
+  annual_subscription: "Annual subscription",
+  one_time: "One-time engagement",
+  multi_payment: "Installment plan"
+};
+
+const revenueBadgeClasses: Record<RevenueClassification, string> = {
+  monthly_subscription: "success",
+  annual_subscription: "info",
+  one_time: "neutral",
+  multi_payment: "warning"
+};
+
+const revenueFilterOptions: { label: string; value: RevenueClassification | "all" }[] = [
+  { label: "All billing models", value: "all" },
+  { label: "Monthly subscriptions", value: "monthly_subscription" },
+  { label: "Annual subscriptions", value: "annual_subscription" },
+  { label: "Installment plans", value: "multi_payment" },
+  { label: "One-time", value: "one_time" }
+];
+
+const currencyFormatterCache = new Map<string, Intl.NumberFormat>();
+
+function formatCurrency(amount: number, currency: string): string {
+  const cacheKey = currency;
+  if (!currencyFormatterCache.has(cacheKey)) {
+    currencyFormatterCache.set(
+      cacheKey,
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency,
+        maximumFractionDigits: currency === "JPY" ? 0 : 2
+      })
+    );
+  }
+
+  return currencyFormatterCache.get(cacheKey)!.format(amount);
+}
 
 function latestInteractionTimestamp(client: Client): string | null {
   if (!client.interactions || client.interactions.length === 0) {
@@ -138,6 +189,45 @@ function formatChannelLabel(channel: InteractionChannel): string {
   }
 }
 
+function formatRevenueAmount(profile: ClientRevenueProfile): string {
+  const base = formatCurrency(Number(profile.amount || 0), profile.currency);
+  if (profile.classification === "monthly_subscription") {
+    return `${base} / mo`;
+  }
+  if (profile.classification === "annual_subscription") {
+    return `${base} / yr`;
+  }
+  return base;
+}
+
+function formatShortDate(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric"
+  });
+}
+
+function formatRevenueMeta(profile: ClientRevenueProfile): string {
+  const details: string[] = [];
+  if (profile.autopay) {
+    details.push("Autopay enabled");
+  }
+  if (profile.payment_count) {
+    details.push(`${profile.payment_count} payments`);
+  }
+  if (profile.remaining_balance && profile.remaining_balance > 0) {
+    details.push(`${formatCurrency(profile.remaining_balance, profile.currency)} outstanding`);
+  }
+  const nextDue = formatShortDate(profile.next_payment_due ?? null);
+  if (nextDue) {
+    details.push(`Next ${nextDue}`);
+  }
+  return details.join(" • ");
+}
+
 function initialFormState(): ClientFormState {
   return {
     organization_name: "",
@@ -161,6 +251,15 @@ function initialFormState(): ClientFormState {
       budget: "",
       currency: "USD",
       start_after: ""
+    },
+    revenue: {
+      classification: "monthly_subscription",
+      amount: "",
+      currency: "USD",
+      autopay: true,
+      next_payment_due: "",
+      payment_count: "",
+      remaining_balance: ""
     }
   };
 }
@@ -175,9 +274,10 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
   const [searchTerm, setSearchTerm] = useState("");
   const [segmentFilter, setSegmentFilter] = useState<ClientSegment | "all">("all");
   const [industryFilter, setIndustryFilter] = useState<Industry | "all">("all");
+  const [billingFilter, setBillingFilter] = useState<RevenueClassification | "all">("all");
 
   const canSubmit = useMemo(() => {
-    const { organization_name, billing_email, project } = formState;
+    const { organization_name, billing_email, project, revenue } = formState;
     return Boolean(
       organization_name &&
       billing_email &&
@@ -185,7 +285,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
       project.project_type &&
       project.start_date &&
       project.manager_id &&
-      project.budget
+      project.budget &&
+      revenue.amount
     );
   }, [formState]);
 
@@ -221,23 +322,31 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
 
       const matchesSegment = segmentFilter === "all" || client.segment === segmentFilter;
       const matchesIndustry = industryFilter === "all" || client.industry === industryFilter;
-      return matchesTerm && matchesSegment && matchesIndustry;
+      const matchesBilling =
+        billingFilter === "all" || client.revenue_profile?.classification === billingFilter;
+      return matchesTerm && matchesSegment && matchesIndustry && matchesBilling;
     });
-  }, [clients, searchTerm, segmentFilter, industryFilter]);
+  }, [clients, searchTerm, segmentFilter, industryFilter, billingFilter]);
 
   const hasActiveFilters = useMemo(
-    () => searchTerm.trim() !== "" || segmentFilter !== "all" || industryFilter !== "all",
-    [searchTerm, segmentFilter, industryFilter]
+    () =>
+      searchTerm.trim() !== "" ||
+      segmentFilter !== "all" ||
+      industryFilter !== "all" ||
+      billingFilter !== "all",
+    [searchTerm, segmentFilter, industryFilter, billingFilter]
   );
 
   const handleClearFilters = () => {
     setSearchTerm("");
     setSegmentFilter("all");
     setIndustryFilter("all");
+    setBillingFilter("all");
   };
 
   const segmentSelectOptions = [{ label: "All segments", value: "all" as const }, ...segmentOptions];
   const industrySelectOptions = [{ label: "All industries", value: "all" as const }, ...industryOptions];
+  const billingSelectOptions = revenueFilterOptions;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -262,6 +371,22 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
           ]
         : [];
 
+      const revenueProfile: ClientRevenueProfile = {
+        classification: formState.revenue.classification,
+        amount: Number(formState.revenue.amount),
+        currency: formState.revenue.currency,
+        autopay: formState.revenue.autopay,
+        next_payment_due: formState.revenue.next_payment_due
+          ? new Date(`${formState.revenue.next_payment_due}T00:00:00Z`).toISOString()
+          : null,
+        last_payment_at: null,
+        payment_count: formState.revenue.payment_count ? Number(formState.revenue.payment_count) : null,
+        remaining_balance:
+          formState.revenue.remaining_balance !== ""
+            ? Number(formState.revenue.remaining_balance)
+            : null
+      };
+
       const payload: ClientCreateRequest = {
         organization_name: formState.organization_name,
         industry: formState.industry,
@@ -280,7 +405,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
             currency: formState.project.currency,
             start_after: formState.project.start_after || null
           }
-        ]
+        ],
+        revenue_profile: revenueProfile
       };
 
       await api.createClient(payload);
@@ -340,6 +466,16 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
               </option>
             ))}
           </select>
+          <select
+            value={billingFilter}
+            onChange={(event) => setBillingFilter(event.target.value as RevenueClassification | "all")}
+          >
+            {billingSelectOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           <button className="button ghost" type="button" onClick={handleClearFilters} disabled={!hasActiveFilters}>
             Clear
           </button>
@@ -351,6 +487,7 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
             <th>Organization</th>
             <th>Segment</th>
             <th>Industry</th>
+            <th>Revenue</th>
             <th>Contacts</th>
             <th>Last touch</th>
             <th>Preferred channel</th>
@@ -360,7 +497,7 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
         <tbody>
           {filteredClients.length === 0 ? (
             <tr>
-              <td className="table-empty" colSpan={7}>
+              <td className="table-empty" colSpan={8}>
                 No clients match the current filters. Update your filters or clear them to view all accounts.
               </td>
             </tr>
@@ -376,6 +513,8 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
               const contacts = client.contacts ?? [];
               const primaryContact = contacts[0];
               const contactCellClass = contacts.length === 0 ? "crm-contact-cell empty" : "crm-contact-cell";
+              const revenueProfile = client.revenue_profile;
+              const revenueMeta = revenueProfile ? formatRevenueMeta(revenueProfile) : "";
 
               return (
                 <tr
@@ -395,6 +534,19 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                     </span>
                   </td>
                   <td style={{ textTransform: "capitalize" }}>{client.industry}</td>
+                  <td>
+                    {revenueProfile ? (
+                      <div className="crm-revenue-cell">
+                        <span className={`badge ${revenueBadgeClasses[revenueProfile.classification]}`}>
+                          {revenueLabels[revenueProfile.classification]}
+                        </span>
+                        <span className="crm-revenue-amount">{formatRevenueAmount(revenueProfile)}</span>
+                        {revenueMeta && <span className="crm-revenue-meta">{revenueMeta}</span>}
+                      </div>
+                    ) : (
+                      <span className="text-muted">No billing profile</span>
+                    )}
+                  </td>
                   <td>
                     <div className={contactCellClass}>
                       <span className="crm-contact-count">
@@ -621,11 +773,137 @@ export function ClientsTable({ clients }: ClientsTableProps): JSX.Element {
                       placeholder="Optional"
                     />
                   </label>
-                </div>
-              </fieldset>
+              </div>
+            </fieldset>
 
-              <fieldset className="form-section">
-                <legend>Initial project</legend>
+            <fieldset className="form-section">
+              <legend>Billing & revenue</legend>
+              <div className="form-grid">
+                <label>
+                  <span className="form-label">Billing model</span>
+                  <span className="form-helper">Choose how this client pays for ongoing work.</span>
+                  <select
+                    value={formState.revenue.classification}
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        revenue: { ...prev.revenue, classification: event.target.value as RevenueClassification }
+                      }))
+                    }
+                  >
+                    {revenueFilterOptions
+                      .filter((option) => option.value !== "all")
+                      .map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="form-label">Contract value</span>
+                  <span className="form-helper">For subscriptions use the recurring amount; for projects the total value.</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formState.revenue.amount}
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        revenue: { ...prev.revenue, amount: event.target.value }
+                      }))
+                    }
+                    required
+                  />
+                </label>
+                <label>
+                  <span className="form-label">Currency</span>
+                  <span className="form-helper">Currency used for invoices and renewals.</span>
+                  <select
+                    value={formState.revenue.currency}
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        revenue: { ...prev.revenue, currency: event.target.value }
+                      }))
+                    }
+                  >
+                    {["USD", "EUR", "GBP", "PHP", "SGD"].map((currency) => (
+                      <option key={currency} value={currency}>
+                        {currency}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="form-label">Autopay</span>
+                  <span className="form-helper">Enable to flag automatic renewals for this client.</span>
+                  <div className="form-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={formState.revenue.autopay}
+                      onChange={(event) =>
+                        setFormState((prev) => ({
+                          ...prev,
+                          revenue: { ...prev.revenue, autopay: event.target.checked }
+                        }))
+                      }
+                    />
+                    <span>Autopay enabled</span>
+                  </div>
+                </label>
+                <label>
+                  <span className="form-label">Next payment due</span>
+                  <span className="form-helper">Optional. Helps surface upcoming renewals.</span>
+                  <input
+                    type="date"
+                    value={formState.revenue.next_payment_due}
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        revenue: { ...prev.revenue, next_payment_due: event.target.value }
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span className="form-label">Payment count</span>
+                  <span className="form-helper">For installment plans, capture the number of payments.</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={formState.revenue.payment_count}
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        revenue: { ...prev.revenue, payment_count: event.target.value }
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span className="form-label">Outstanding balance</span>
+                  <span className="form-helper">Track remaining value still to be collected.</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formState.revenue.remaining_balance}
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        revenue: { ...prev.revenue, remaining_balance: event.target.value }
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset className="form-section">
+              <legend>Initial project</legend>
                 <div className="form-grid">
                   <label>
                     <span className="form-label">Project name</span>

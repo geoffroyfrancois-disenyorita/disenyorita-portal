@@ -15,6 +15,7 @@ from ..schemas.clients import (
     ClientInvoiceDigest,
     ClientPaymentDigest,
     ClientProjectDigest,
+    ClientRevenueProfile,
     ClientSegment,
     ClientSummary,
     ClientSupportSnapshot,
@@ -33,6 +34,8 @@ from ..schemas.clients import (
     Interaction,
     InteractionChannel,
     InteractionUpdate,
+    RevenueClassification,
+    RevenueMixSlice,
 )
 from ..schemas.projects import (
     Milestone,
@@ -180,6 +183,14 @@ class InMemoryStore:
                     updated_at=now - timedelta(days=300),
                 )
             ],
+            revenue_profile=ClientRevenueProfile(
+                classification=RevenueClassification.MONTHLY_SUBSCRIPTION,
+                amount=4200.0,
+                currency=Currency.USD,
+                autopay=True,
+                last_payment_at=now - timedelta(days=18),
+                next_payment_due=now + timedelta(days=12),
+            ),
         )
         isla_client = Client(
             organization_name="Aurora Creative Studio",
@@ -188,8 +199,66 @@ class InMemoryStore:
             billing_email="ap@auroracreative.example",
             preferred_channel=InteractionChannel.PORTAL,
             timezone="Europe/Paris",
+            revenue_profile=ClientRevenueProfile(
+                classification=RevenueClassification.MULTI_PAYMENT,
+                amount=36000.0,
+                currency=Currency.EUR,
+                autopay=False,
+                payment_count=4,
+                remaining_balance=12000.0,
+                next_payment_due=now + timedelta(days=27),
+                last_payment_at=now - timedelta(days=34),
+            ),
         )
-        for client in (disenyorita_client, isla_client):
+        harbor_client = Client(
+            organization_name="Harbor Wellness Retreat",
+            industry=Industry.HOSPITALITY,
+            segment=ClientSegment.VIP,
+            billing_email="accounts@harborwellness.example",
+            preferred_channel=InteractionChannel.EMAIL,
+            timezone="America/Los_Angeles",
+            contacts=[
+                Contact(
+                    first_name="Noelle",
+                    last_name="Chen",
+                    email="noelle@harborwellness.example",
+                    title="Director of Wellness",
+                )
+            ],
+            revenue_profile=ClientRevenueProfile(
+                classification=RevenueClassification.ANNUAL_SUBSCRIPTION,
+                amount=24000.0,
+                currency=Currency.USD,
+                autopay=True,
+                last_payment_at=now - timedelta(days=140),
+                next_payment_due=now + timedelta(days=225),
+            ),
+        )
+        luna_client = Client(
+            organization_name="Luna Events Collective",
+            industry=Industry.OTHER,
+            segment=ClientSegment.PROSPECT,
+            billing_email="hello@lunaevents.example",
+            preferred_channel=InteractionChannel.SOCIAL,
+            timezone="Asia/Singapore",
+            contacts=[
+                Contact(
+                    first_name="Elise",
+                    last_name="Tan",
+                    email="elise@lunaevents.example",
+                    title="Founder",
+                )
+            ],
+            revenue_profile=ClientRevenueProfile(
+                classification=RevenueClassification.ONE_TIME,
+                amount=18000.0,
+                currency=Currency.SGD,
+                autopay=False,
+                remaining_balance=5000.0,
+                next_payment_due=now + timedelta(days=10),
+            ),
+        )
+        for client in (disenyorita_client, isla_client, harbor_client, luna_client):
             self.clients[client.id] = client
 
         # Seed projects
@@ -586,6 +655,7 @@ class InMemoryStore:
                 )
                 for contact in payload.contacts
             ],
+            revenue_profile=payload.revenue_profile,
         )
 
         project_setups = [setup.copy() for setup in payload.projects]
@@ -1496,12 +1566,20 @@ class InMemoryStore:
 
     def client_summary(self) -> ClientSummary:
         by_segment: Dict[str, int] = {segment.value: 0 for segment in ClientSegment}
+        by_revenue_profile: Dict[str, int] = defaultdict(int)
         for client in self.clients.values():
             by_segment[client.segment.value] += 1
+            classification = (
+                client.revenue_profile.classification.value
+                if client.revenue_profile
+                else "unclassified"
+            )
+            by_revenue_profile[classification] += 1
         return ClientSummary(
             total_clients=len(self.clients),
             by_segment=by_segment,
             active_portal_users=sum(1 for client in self.clients.values() if client.preferred_channel == InteractionChannel.PORTAL),
+            by_revenue_profile=dict(by_revenue_profile),
         )
 
     def client_engagements(self) -> List[ClientEngagement]:
@@ -1598,6 +1676,74 @@ class InMemoryStore:
             return max((interaction.occurred_at for interaction in client.interactions), default=None)
 
         metrics: List[CRMMetric] = []
+        revenue_labels = {
+            RevenueClassification.MONTHLY_SUBSCRIPTION: "Monthly subscriptions",
+            RevenueClassification.ANNUAL_SUBSCRIPTION: "Annual subscriptions",
+            RevenueClassification.ONE_TIME: "One-time engagements",
+            RevenueClassification.MULTI_PAYMENT: "Installment plans",
+        }
+        mix_totals: Dict[RevenueClassification, Dict[str, float | int]] = {
+            classification: {
+                "label": label,
+                "client_count": 0,
+                "total_value": 0.0,
+                "monthly_value": 0.0,
+                "open_balance": 0.0,
+                "upcoming_renewals": 0,
+            }
+            for classification, label in revenue_labels.items()
+        }
+        recurring_mrr = 0.0
+        monthly_subscription_clients = 0
+        annual_subscription_clients = 0
+        multi_payment_clients = 0
+        one_time_clients = 0
+        for client in clients:
+            profile = getattr(client, "revenue_profile", None)
+            if not profile:
+                continue
+            classification = profile.classification
+            entry = mix_totals[classification]
+            entry["client_count"] += 1
+            contract_value = float(profile.amount or 0.0)
+            entry["total_value"] += contract_value
+            if classification == RevenueClassification.MONTHLY_SUBSCRIPTION:
+                monthly_subscription_clients += 1
+                recurring_mrr += contract_value
+                entry["monthly_value"] += contract_value
+            elif classification == RevenueClassification.ANNUAL_SUBSCRIPTION:
+                annual_subscription_clients += 1
+                recurring_mrr += contract_value / 12.0
+                entry["monthly_value"] += contract_value / 12.0
+            elif classification == RevenueClassification.MULTI_PAYMENT:
+                multi_payment_clients += 1
+            elif classification == RevenueClassification.ONE_TIME:
+                one_time_clients += 1
+
+            if profile.remaining_balance:
+                entry["open_balance"] += float(profile.remaining_balance)
+
+            upcoming_due = profile.next_payment_due
+            if upcoming_due and (upcoming_due - now).days <= 45:
+                entry["upcoming_renewals"] += 1
+
+        revenue_mix = [
+            RevenueMixSlice(
+                classification=classification,
+                label=totals["label"],
+                client_count=int(totals["client_count"]),
+                total_value=float(totals["total_value"]),
+                monthly_value=float(totals["monthly_value"]),
+                open_balance=float(totals["open_balance"]),
+                upcoming_renewals=int(totals["upcoming_renewals"]),
+            )
+            for classification, totals in mix_totals.items()
+            if totals["client_count"]
+        ]
+        revenue_mix.sort(
+            key=lambda entry: entry.monthly_value if entry.monthly_value else entry.total_value,
+            reverse=True,
+        )
         total_clients = summary.total_clients
         active_retainers = sum(1 for client in clients if client.segment == ClientSegment.RETAINER)
         vip_accounts = sum(1 for client in clients if client.segment == ClientSegment.VIP)
@@ -1634,6 +1780,46 @@ class InMemoryStore:
                 value=float(active_retainers),
                 unit="accounts",
                 description="Clients on ongoing, recurring retainers.",
+            )
+        )
+        metrics.append(
+            CRMMetric(
+                label="Recurring revenue (MRR)",
+                value=recurring_mrr,
+                unit="currency",
+                description="Monthly recurring revenue from subscription accounts.",
+            )
+        )
+        metrics.append(
+            CRMMetric(
+                label="Monthly subscriptions",
+                value=float(monthly_subscription_clients),
+                unit="accounts",
+                description="Accounts billed on monthly cadence.",
+            )
+        )
+        metrics.append(
+            CRMMetric(
+                label="Annual subscriptions",
+                value=float(annual_subscription_clients),
+                unit="accounts",
+                description="Accounts billed annually with prepaid retainers.",
+            )
+        )
+        metrics.append(
+            CRMMetric(
+                label="Installment plans",
+                value=float(multi_payment_clients),
+                unit="accounts",
+                description="Projects paying through staged installments.",
+            )
+        )
+        metrics.append(
+            CRMMetric(
+                label="One-time engagements",
+                value=float(one_time_clients),
+                unit="accounts",
+                description="Projects with a single payment milestone.",
             )
         )
         metrics.append(
@@ -1788,6 +1974,7 @@ class InMemoryStore:
             pipeline=pipeline,
             interaction_gaps=interaction_gaps,
             contact_gaps=contact_gaps,
+            revenue_mix=revenue_mix,
         )
 
     def financial_summary(self) -> FinancialSummary:

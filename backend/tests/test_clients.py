@@ -43,6 +43,22 @@ def _cleanup(client_id: str, project_ids: Iterable[str]) -> None:
         store.projects.pop(project_id, None)
 
 
+def _revenue_profile(
+    classification: str = "multi_payment",
+    amount: float = 48000.0,
+    currency: str = "USD",
+) -> dict:
+    profile = {
+        "classification": classification,
+        "amount": amount,
+        "currency": currency,
+        "autopay": classification.endswith("subscription"),
+    }
+    if classification == "multi_payment":
+        profile.update({"payment_count": 4, "remaining_balance": amount / 2})
+    return profile
+
+
 def _seeded_client_with_data() -> Client:
     for client in store.clients.values():
         if client.organization_name == "Sunset Boutique Hotel":
@@ -77,6 +93,7 @@ def test_create_client_with_single_project_template() -> None:
                 "currency": "USD",
             }
         ],
+        "revenue_profile": _revenue_profile(amount=52000.0),
     }
 
     response = client.post("/api/v1/clients", json=payload)
@@ -140,6 +157,7 @@ def test_branding_then_website_sequence() -> None:
                 "currency": "USD",
             },
         ],
+        "revenue_profile": _revenue_profile(amount=77000.0),
     }
 
     response = client.post("/api/v1/clients", json=payload)
@@ -207,6 +225,7 @@ def test_create_and_use_custom_project_template() -> None:
                 "currency": "USD",
             }
         ],
+        "revenue_profile": _revenue_profile(amount=36000.0),
     }
 
     response = client.post("/api/v1/clients", json=client_payload)

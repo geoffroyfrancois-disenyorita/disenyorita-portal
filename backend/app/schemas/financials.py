@@ -11,6 +11,8 @@ class Currency(str, Enum):
     USD = "USD"
     EUR = "EUR"
     GBP = "GBP"
+    PHP = "PHP"
+    SGD = "SGD"
 
 
 class InvoiceStatus(str, Enum):
