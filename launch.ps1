@@ -17,6 +17,7 @@ Commands:
   down|stop             Stop background services
   restart               Restart background services
   status                Show background service status
+  verify                Check tooling, dependencies, and environment configuration
   logs [service]        Tail logs for backend, frontend, or both (default)
 
 Examples:
@@ -30,7 +31,7 @@ Examples:
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$validCommands = @('dev', 'run', 'foreground', 'up', 'start', 'background', 'down', 'stop', 'restart', 'status', 'logs', 'help', '--help', '-h')
+$validCommands = @('dev', 'run', 'foreground', 'up', 'start', 'background', 'down', 'stop', 'restart', 'status', 'logs', 'verify', 'help', '--help', '-h')
 $normalizedCommand = $Command.ToLowerInvariant()
 if (-not $validCommands.Contains($normalizedCommand)) {
     Write-Error "Unknown command '$Command'."
@@ -146,6 +147,29 @@ function Load-DotEnv {
     }
 }
 
+$script:BackendHealthUrl = 'http://127.0.0.1:8000/health'
+$script:FrontendDevUrl = 'http://127.0.0.1:3000'
+
+function Initialize-ServiceUrls {
+    $backendPort = $env:BACKEND_PORT
+    if ([string]::IsNullOrWhiteSpace($backendPort)) {
+        $backendPort = $env:API_PORT
+    }
+    if ([string]::IsNullOrWhiteSpace($backendPort)) {
+        $backendPort = '8000'
+    }
+    $script:BackendHealthUrl = "http://127.0.0.1:$backendPort/health"
+
+    $frontendPort = $env:FRONTEND_PORT
+    if ([string]::IsNullOrWhiteSpace($frontendPort)) {
+        $frontendPort = $env:PORT
+    }
+    if ([string]::IsNullOrWhiteSpace($frontendPort)) {
+        $frontendPort = '3000'
+    }
+    $script:FrontendDevUrl = "http://127.0.0.1:$frontendPort"
+}
+
 $script:PythonCommandParts = @()
 $script:VenvPython = $null
 
@@ -205,6 +229,8 @@ function Ensure-Prerequisites {
     else {
         Write-Info 'Frontend dependencies already installed.'
     }
+
+    Initialize-ServiceUrls
 }
 
 function Get-PidPath {
@@ -317,15 +343,74 @@ function Stop-BackgroundService {
     Remove-Item $pidPath -Force
 }
 
+function Wait-ForService {
+    param(
+        [string]$Name,
+        [string]$Url,
+        [int]$TimeoutSeconds = 60,
+        [int]$RetryDelayMilliseconds = 500,
+        [string]$LogPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        Write-ErrorMessage "No URL provided to verify $Name service startup."
+        return $false
+    }
+
+    Write-Info "Waiting for $Name to become available at $Url ..."
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $invokeParams = @{ Uri = $Url; TimeoutSec = 5 }
+    if ($PSVersionTable.PSVersion.Major -lt 6) {
+        $invokeParams['UseBasicParsing'] = $true
+    }
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $response = Invoke-WebRequest @invokeParams
+            if ($null -ne $response -and $response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
+                Write-Info "$Name is responding at $Url (HTTP $($response.StatusCode))."
+                return $true
+            }
+        }
+        catch {
+            Start-Sleep -Milliseconds $RetryDelayMilliseconds
+            continue
+        }
+
+        Start-Sleep -Milliseconds $RetryDelayMilliseconds
+    }
+
+    $message = "$Name did not become ready within $TimeoutSeconds seconds at $Url."
+    if (-not [string]::IsNullOrWhiteSpace($LogPath)) {
+        $message += " Check logs at $LogPath."
+    }
+    Write-ErrorMessage $message
+    return $false
+}
+
 function Start-BackgroundServices {
     Ensure-StateDirectories
 
     Load-DotEnv (Join-Path $BackendDir '.env')
+    Initialize-ServiceUrls
     Start-BackgroundService -Name 'backend' -FilePath $script:VenvPython -Arguments @('-m', 'uvicorn', 'app.main:app', '--reload') -WorkingDirectory $BackendDir
 
+    if (-not (Wait-ForService -Name 'backend' -Url $script:BackendHealthUrl -TimeoutSeconds 90 -LogPath (Get-LogPath 'backend'))) {
+        Stop-BackgroundService -Name 'backend'
+        throw 'Backend service failed to start. Check the log output for details.'
+    }
+
     Load-DotEnv (Join-Path $FrontendDir '.env')
+    Initialize-ServiceUrls
     Start-BackgroundService -Name 'frontend' -FilePath 'npm' -Arguments @('run', 'dev') -WorkingDirectory $FrontendDir
 
+    if (-not (Wait-ForService -Name 'frontend' -Url $script:FrontendDevUrl -TimeoutSeconds 120 -LogPath (Get-LogPath 'frontend'))) {
+        Stop-BackgroundService -Name 'frontend'
+        Stop-BackgroundService -Name 'backend'
+        throw 'Frontend service failed to start. Check the log output for details.'
+    }
+
+    Write-Info "Backend API available at $script:BackendHealthUrl"
+    Write-Info "Frontend app available at $script:FrontendDevUrl"
     Write-Info "Background services running. Use '.\launch.ps1 logs' to follow output or '.\launch.ps1 down' to stop."
 }
 
@@ -342,10 +427,10 @@ function Show-Status {
         $pidPath = Get-PidPath $name
         $process = Get-ProcessFromPidFile $pidPath
         if ($null -ne $process) {
-            Write-Host "$name: running (PID $($process.Id))"
+            Write-Host "${name}: running (PID $($process.Id))"
         }
         else {
-            Write-Host "$name: stopped"
+            Write-Host "${name}: stopped"
         }
     }
 
@@ -401,19 +486,38 @@ function Stop-Processes {
 }
 
 function Start-ForegroundServices {
+    $script:LaunchProcesses = @()
+    $script:StopRequested = $false
+    $script:ExitCode = 0
+
     Load-DotEnv (Join-Path $BackendDir '.env')
+    Initialize-ServiceUrls
     Write-Info 'Starting backend server...'
     $backendProcess = Start-Process -FilePath $script:VenvPython -ArgumentList @('-m', 'uvicorn', 'app.main:app', '--reload') -WorkingDirectory $BackendDir -PassThru -NoNewWindow
     Write-Info "Backend server started (PID $($backendProcess.Id))."
 
-    Load-DotEnv (Join-Path $FrontendDir '.env')
-    Write-Info 'Starting frontend server...'
-    $frontendProcess = Start-Process -FilePath 'npm' -ArgumentList @('run', 'dev') -WorkingDirectory $FrontendDir -PassThru -NoNewWindow
-    Write-Info "Frontend server started (PID $($frontendProcess.Id))."
+    if (-not (Wait-ForService -Name 'backend' -Url $script:BackendHealthUrl -TimeoutSeconds 90)) {
+        Set-Variable -Name ExitCode -Scope Script -Value 1
+        Set-Variable -Name StopRequested -Scope Script -Value $true
+        Write-ErrorMessage "Backend did not become ready at $script:BackendHealthUrl."
+    }
+
+    $frontendProcess = $null
+    if (-not $script:StopRequested) {
+        Load-DotEnv (Join-Path $FrontendDir '.env')
+        Initialize-ServiceUrls
+        Write-Info 'Starting frontend server...'
+        $frontendProcess = Start-Process -FilePath 'npm' -ArgumentList @('run', 'dev') -WorkingDirectory $FrontendDir -PassThru -NoNewWindow
+        Write-Info "Frontend server started (PID $($frontendProcess.Id))."
+
+        if (-not (Wait-ForService -Name 'frontend' -Url $script:FrontendDevUrl -TimeoutSeconds 120)) {
+            Set-Variable -Name ExitCode -Scope Script -Value 1
+            Set-Variable -Name StopRequested -Scope Script -Value $true
+            Write-ErrorMessage "Frontend did not become ready at $script:FrontendDevUrl."
+        }
+    }
 
     $script:LaunchProcesses = @($backendProcess, $frontendProcess)
-    $script:StopRequested = $false
-    $script:ExitCode = 0
 
     $cancelRegistration = Register-EngineEvent -SourceIdentifier ConsoleCancelEvent -SupportEvent -Action {
         param($sender, $eventArgs)
@@ -423,7 +527,11 @@ function Start-ForegroundServices {
         Set-Variable -Name StopRequested -Scope Script -Value $true
     }
 
-    Write-Info 'Both services are running. Press Ctrl+C to stop.'
+    if (-not $script:StopRequested) {
+        Write-Info "Backend API available at $script:BackendHealthUrl"
+        Write-Info "Frontend app available at $script:FrontendDevUrl"
+        Write-Info 'Both services are running. Press Ctrl+C to stop.'
+    }
 
     try {
         while (-not $script:StopRequested) {
@@ -484,6 +592,10 @@ switch ($normalizedCommand) {
     }
     'logs' {
         Tail-Logs -Target $Target
+    }
+    'verify' {
+        Ensure-Prerequisites
+        Write-Info 'Environment verification complete. Use "dev" or "up" to start the servers.'
     }
     default {
         Show-Usage
