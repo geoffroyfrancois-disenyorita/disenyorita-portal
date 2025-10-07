@@ -103,6 +103,7 @@ from ..schemas.operations import (
     TimeOffWindow,
 )
 from .project_templates import build_plan, project_code, template_library
+from ..core.datetime_utils import utc_now
 
 
 PH_TAX_BRACKETS: Sequence[Dict[str, float]] = (
@@ -117,7 +118,7 @@ PH_TAX_BRACKETS: Sequence[Dict[str, float]] = (
 
 class InMemoryStore:
     def __init__(self, *, seed_demo_data: bool | None = None) -> None:
-        now = datetime.utcnow()
+        now = utc_now()
         self.clients: Dict[str, Client] = {}
         self.projects: Dict[str, Project] = {}
         self.invoices: Dict[str, Invoice] = {}
@@ -740,7 +741,7 @@ class InMemoryStore:
         if not client:
             raise ValueError("Client not found")
 
-        now = datetime.utcnow()
+        now = utc_now()
         update_fields = payload.dict(
             exclude_unset=True,
             exclude={"contacts", "interactions", "documents"},
@@ -846,7 +847,7 @@ class InMemoryStore:
         template_id = update_data.pop("template_id", None)
         task_updates = update_data.pop("tasks", None)
         milestone_updates = update_data.pop("milestones", None)
-        now = datetime.utcnow()
+        now = utc_now()
 
         start_date = update_data.get("start_date", project.start_date)
 
@@ -1081,7 +1082,7 @@ class InMemoryStore:
         if not client:
             raise ValueError("Client not found")
 
-        now = datetime.utcnow()
+        now = utc_now()
 
         project_digests: List[ClientProjectDigest] = []
         client_projects = [
@@ -1249,7 +1250,7 @@ class InMemoryStore:
         return 1.0
 
     def project_portfolio(self) -> List[ProjectProgress]:
-        now = datetime.utcnow()
+        now = utc_now()
         portfolio: List[ProjectProgress] = []
         for project in self.projects.values():
             total_tasks = len(project.tasks)
@@ -1378,7 +1379,7 @@ class InMemoryStore:
         if not project:
             raise ValueError("Project not found")
 
-        now = datetime.utcnow()
+        now = utc_now()
         alerts: List[TaskAlert] = []
         timeline: List[TaskTimelineEntry] = []
         late_tasks = 0
@@ -1564,7 +1565,7 @@ class InMemoryStore:
             by_status[project.status.value] += 1
             for task in project.tasks:
                 billable_hours += task.logged_hours if task.billable else 0
-                if task.due_date and task.due_date < datetime.utcnow() and task.status != TaskStatus.DONE:
+                if task.due_date and task.due_date < utc_now() and task.status != TaskStatus.DONE:
                     overdue_tasks += 1
         return ProjectSummary(
             total_projects=len(self.projects),
@@ -1592,7 +1593,7 @@ class InMemoryStore:
         )
 
     def client_engagements(self) -> List[ClientEngagement]:
-        now = datetime.utcnow()
+        now = utc_now()
         engagements: List[ClientEngagement] = []
         for client in self.clients.values():
             client_projects = [
@@ -1675,7 +1676,7 @@ class InMemoryStore:
         return engagements
 
     def client_crm_overview(self) -> ClientCRMOverview:
-        now = datetime.utcnow()
+        now = utc_now()
         summary = self.client_summary()
         engagements = self.client_engagements()
         clients = list(self.clients.values())
@@ -2108,7 +2109,7 @@ class InMemoryStore:
 
         computation = self.calculate_tax(payload)
 
-        today = datetime.utcnow().date()
+        today = utc_now().date()
 
         def upcoming_due(month: int, day: int) -> date:
             due = date(today.year, month, day)
@@ -2206,7 +2207,7 @@ class InMemoryStore:
         if timestamps:
             last_updated = max(timestamps)
         else:
-            last_updated = datetime.utcnow()
+            last_updated = utc_now()
         self._tax_profile_updated_at = max(self._tax_profile_updated_at, last_updated)
 
         return TaxProfile(
@@ -2344,7 +2345,9 @@ class InMemoryStore:
 
     def support_summary(self) -> SupportSummary:
         open_tickets = sum(1 for ticket in self.tickets.values() if ticket.status in {TicketStatus.OPEN, TicketStatus.IN_PROGRESS})
-        breached = sum(1 for ticket in self.tickets.values() if ticket.sla_due and ticket.sla_due < datetime.utcnow())
+        breached = sum(
+            1 for ticket in self.tickets.values() if ticket.sla_due and ticket.sla_due < utc_now()
+        )
         return SupportSummary(
             open_tickets=open_tickets,
             breached_slas=breached,
@@ -2362,7 +2365,9 @@ class InMemoryStore:
     def monitoring_summary(self) -> MonitoringSummary:
         response_times = [check.last_response_time_ms for check in self.checks.values() if check.last_response_time_ms]
         avg_response = int(sum(response_times) / len(response_times)) if response_times else 0
-        incidents_today = sum(1 for alert in self.alerts.values() if alert.triggered_at.date() == datetime.utcnow().date())
+        incidents_today = sum(
+            1 for alert in self.alerts.values() if alert.triggered_at.date() == utc_now().date()
+        )
         failing_checks = sum(1 for check in self.checks.values() if check.status != "passing")
         return MonitoringSummary(
             monitored_sites=len(self.sites),
@@ -2414,7 +2419,7 @@ class InMemoryStore:
         return statuses
 
     def operations_snapshot(self) -> OperationsSnapshot:
-        now = datetime.utcnow()
+        now = utc_now()
         macro = self.macro_financials()
         cash_on_hand = max(macro.total_collected - macro.total_expenses, 0.0)
 

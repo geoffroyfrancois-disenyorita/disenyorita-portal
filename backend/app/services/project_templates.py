@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Iterable, List, Optional
 
 from ..schemas.projects import Milestone, Task, TaskPriority, TaskStatus, TaskType
+from ..core.datetime_utils import utc_now
 
 
 @dataclass(frozen=True)
@@ -332,5 +333,5 @@ def list_templates() -> Dict[str, ProjectTemplate]:
 
 
 def project_code(prefix: str, sequence: int, *, year: int | None = None) -> str:
-    year = year or datetime.utcnow().year
+    year = year or utc_now().year
     return f"{prefix}-{year}-{sequence:02d}"

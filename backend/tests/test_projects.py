@@ -1,6 +1,6 @@
 import inspect
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import ForwardRef
 
@@ -47,7 +47,7 @@ def test_project_tracker_surfaces_automation_and_notifications() -> None:
     original_discovery = discovery_task.copy(deep=True)
     original_ux = ux_task.copy(deep=True)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     reset_payload = {
         "tasks": [

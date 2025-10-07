@@ -9,6 +9,7 @@ from .common import IdentifiedModel
 from .financials import Currency, InvoiceStatus
 from .projects import Milestone, Project, ProjectStatus, Task
 from .support import TicketStatus
+from ..core.datetime_utils import utc_now
 
 
 class Industry(str, Enum):
@@ -314,7 +315,7 @@ class RevenueMixSlice(BaseModel):
 
 
 class ClientCRMOverview(BaseModel):
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=utc_now)
     metrics: List[CRMMetric] = Field(default_factory=list)
     pipeline: List[CRMPipelineStage] = Field(default_factory=list)
     interaction_gaps: List[CRMInteractionGap] = Field(default_factory=list)

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import sys
 import typing
 
@@ -100,7 +100,7 @@ def test_tax_profile_includes_business_context_and_calendar() -> None:
 
 def test_pricing_suggestions_flag_low_margin_projects() -> None:
     project = next(iter(store.projects.values()))
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     invoice = Invoice(
         client_id=project.client_id,
         project_id=project.id,

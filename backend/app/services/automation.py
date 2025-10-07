@@ -20,6 +20,7 @@ from ..schemas.marketing import Campaign, ContentItem, ContentStatus
 from ..schemas.monitoring import Check, Site
 from ..schemas.projects import ProjectHealth, ProjectStatus
 from ..schemas.support import TicketStatus
+from ..core.datetime_utils import utc_now
 from .data import InMemoryStore
 
 
@@ -51,7 +52,7 @@ class AutomationEngine:
 
     @property
     def now(self) -> datetime:
-        return self._now or datetime.utcnow()
+        return self._now or utc_now()
 
     def generate_digest(self) -> AutomationDigest:
         """Build a digest capturing automation tasks across domains."""
