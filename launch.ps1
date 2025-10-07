@@ -427,10 +427,10 @@ function Show-Status {
         $pidPath = Get-PidPath $name
         $process = Get-ProcessFromPidFile $pidPath
         if ($null -ne $process) {
-            Write-Host "$name: running (PID $($process.Id))"
+            Write-Host "${name}: running (PID $($process.Id))"
         }
         else {
-            Write-Host "$name: stopped"
+            Write-Host "${name}: stopped"
         }
     }
 
