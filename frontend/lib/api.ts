@@ -75,6 +75,7 @@ export interface DashboardSnapshot {
     total_clients: number;
     by_segment: Record<string, number>;
     active_portal_users: number;
+    by_revenue_profile: Record<string, number>;
   };
   financials: {
     mrr: number;
@@ -374,6 +375,23 @@ export interface ClientDocument extends TimestampedEntity {
   signed: boolean;
 }
 
+export type RevenueClassification =
+  | "monthly_subscription"
+  | "annual_subscription"
+  | "one_time"
+  | "multi_payment";
+
+export interface ClientRevenueProfile {
+  classification: RevenueClassification;
+  amount: number;
+  currency: string;
+  autopay: boolean;
+  next_payment_due?: string | null;
+  last_payment_at?: string | null;
+  payment_count?: number | null;
+  remaining_balance?: number | null;
+}
+
 export interface Client extends TimestampedEntity {
   id: string;
   organization_name: string;
@@ -385,6 +403,7 @@ export interface Client extends TimestampedEntity {
   contacts?: Contact[];
   interactions?: Interaction[];
   documents?: ClientDocument[];
+  revenue_profile: ClientRevenueProfile;
 }
 
 export interface ClientProjectDigest {
@@ -487,12 +506,23 @@ export interface CRMContactGap {
   recommended_role: string;
 }
 
+export interface RevenueMixSlice {
+  classification: RevenueClassification;
+  label: string;
+  client_count: number;
+  total_value: number;
+  monthly_value: number;
+  open_balance: number;
+  upcoming_renewals: number;
+}
+
 export interface ClientCRMOverview {
   generated_at: string;
   metrics: CRMMetric[];
   pipeline: CRMPipelineStage[];
   interaction_gaps: CRMInteractionGap[];
   contact_gaps: CRMContactGap[];
+  revenue_mix: RevenueMixSlice[];
 }
 
 export interface ProjectSetup {
@@ -514,6 +544,7 @@ export interface ClientCreateRequest {
   timezone: string;
   contacts: ContactInput[];
   projects: ProjectSetup[];
+  revenue_profile: ClientRevenueProfile;
 }
 
 export interface ClientWithProjects {

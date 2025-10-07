@@ -11,6 +11,11 @@ async function getDashboard(): Promise<DashboardSnapshot> {
 
 export default async function DashboardPage(): Promise<JSX.Element> {
   const data = await getDashboard();
+  const recurringAccounts =
+    (data.clients.by_revenue_profile?.monthly_subscription ?? 0) +
+    (data.clients.by_revenue_profile?.annual_subscription ?? 0);
+  const installmentAccounts = data.clients.by_revenue_profile?.multi_payment ?? 0;
+  const oneTimeAccounts = data.clients.by_revenue_profile?.one_time ?? 0;
 
   return (
     <div>
@@ -39,6 +44,12 @@ export default async function DashboardPage(): Promise<JSX.Element> {
           value={String(data.monitoring.incidents_today)}
           helper="Last 24 hours"
           tone={data.monitoring.incidents_today > 0 ? "danger" : "success"}
+        />
+        <MetricCard
+          title="Recurring accounts"
+          value={`${recurringAccounts}`}
+          helper={`${installmentAccounts} installment • ${oneTimeAccounts} one-time`}
+          tone="success"
         />
         <MetricCard
           title="Portal adoption"

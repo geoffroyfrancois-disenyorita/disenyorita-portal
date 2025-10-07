@@ -56,6 +56,39 @@ class Document(IdentifiedModel):
     signed: bool = False
 
 
+class RevenueClassification(str, Enum):
+    MONTHLY_SUBSCRIPTION = "monthly_subscription"
+    ANNUAL_SUBSCRIPTION = "annual_subscription"
+    ONE_TIME = "one_time"
+    MULTI_PAYMENT = "multi_payment"
+
+
+class ClientRevenueProfile(BaseModel):
+    classification: RevenueClassification
+    amount: float
+    currency: Currency = Currency.USD
+    autopay: bool = False
+    next_payment_due: Optional[datetime] = None
+    last_payment_at: Optional[datetime] = None
+    payment_count: Optional[int] = None
+    remaining_balance: Optional[float] = None
+
+    @root_validator
+    def validate_classification(cls, values: dict) -> dict:
+        classification: RevenueClassification = values.get("classification")
+        amount: Optional[float] = values.get("amount")
+        if amount is not None and amount < 0:
+            raise ValueError("Amount must be non-negative")
+
+        if classification in {
+            RevenueClassification.MONTHLY_SUBSCRIPTION,
+            RevenueClassification.ANNUAL_SUBSCRIPTION,
+        }:
+            if amount is None or amount <= 0:
+                raise ValueError("Subscriptions require a positive recurring amount")
+        return values
+
+
 class Client(IdentifiedModel):
     organization_name: str
     industry: Industry
@@ -66,12 +99,14 @@ class Client(IdentifiedModel):
     contacts: List[Contact] = Field(default_factory=list)
     interactions: List[Interaction] = Field(default_factory=list)
     documents: List[Document] = Field(default_factory=list)
+    revenue_profile: ClientRevenueProfile
 
 
 class ClientSummary(BaseModel):
     total_clients: int
     by_segment: dict
     active_portal_users: int
+    by_revenue_profile: dict
 
 
 class ProjectSetup(BaseModel):
@@ -96,6 +131,7 @@ class ClientCreateRequest(BaseModel):
     timezone: str = "UTC"
     contacts: List[Contact] = Field(default_factory=list)
     projects: List[ProjectSetup] = Field(default_factory=list)
+    revenue_profile: ClientRevenueProfile
 
     @root_validator(pre=True)
     def coerce_project_list(cls, values: dict) -> dict:
@@ -147,6 +183,7 @@ class ClientUpdateRequest(BaseModel):
     contacts: Optional[List[ContactUpdate]] = None
     interactions: Optional[List[InteractionUpdate]] = None
     documents: Optional[List[DocumentUpdate]] = None
+    revenue_profile: Optional[ClientRevenueProfile] = None
 
 
 class ClientWithProjects(BaseModel):
@@ -266,9 +303,20 @@ class CRMContactGap(BaseModel):
     recommended_role: str
 
 
+class RevenueMixSlice(BaseModel):
+    classification: RevenueClassification
+    label: str
+    client_count: int
+    total_value: float
+    monthly_value: float
+    open_balance: float = 0.0
+    upcoming_renewals: int = 0
+
+
 class ClientCRMOverview(BaseModel):
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     metrics: List[CRMMetric] = Field(default_factory=list)
     pipeline: List[CRMPipelineStage] = Field(default_factory=list)
     interaction_gaps: List[CRMInteractionGap] = Field(default_factory=list)
     contact_gaps: List[CRMContactGap] = Field(default_factory=list)
+    revenue_mix: List[RevenueMixSlice] = Field(default_factory=list)

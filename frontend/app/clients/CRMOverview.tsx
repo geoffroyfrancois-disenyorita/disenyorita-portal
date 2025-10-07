@@ -6,6 +6,12 @@ const currencyFormatter = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 0
 });
 
+const usdFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0
+});
+
 const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const percentFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 
@@ -71,6 +77,17 @@ function formatChannel(channel: string): string {
     default:
       return channel;
   }
+}
+
+function formatUsd(amount: number): string {
+  return usdFormatter.format(amount);
+}
+
+function formatMonthlyValue(amount: number): string {
+  if (!amount) {
+    return "—";
+  }
+  return `${formatUsd(amount)} / mo`;
 }
 
 interface CRMOverviewProps {
@@ -143,6 +160,49 @@ export function CRMOverview({ overview }: CRMOverviewProps): JSX.Element {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="crm-section" aria-labelledby="crm-revenue-title">
+          <div className="crm-section-header">
+            <div>
+              <h4 id="crm-revenue-title">Revenue mix</h4>
+              <p className="crm-section-subtitle">Breakdown of billing models and renewal exposure.</p>
+            </div>
+          </div>
+          <div className="table-scroll">
+            <table className="table crm-pipeline-table">
+              <thead>
+                <tr>
+                  <th scope="col">Model</th>
+                  <th scope="col">Accounts</th>
+                  <th scope="col">Contract value</th>
+                  <th scope="col">Monthly value</th>
+                  <th scope="col">Upcoming renewals</th>
+                  <th scope="col">Outstanding balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overview.revenue_mix.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-muted">
+                      No billing data yet.
+                    </td>
+                  </tr>
+                ) : (
+                  overview.revenue_mix.map((slice) => (
+                    <tr key={slice.classification}>
+                      <th scope="row">{slice.label}</th>
+                      <td>{numberFormatter.format(slice.client_count)}</td>
+                      <td>{formatUsd(slice.total_value)}</td>
+                      <td>{formatMonthlyValue(slice.monthly_value)}</td>
+                      <td>{slice.upcoming_renewals > 0 ? numberFormatter.format(slice.upcoming_renewals) : "—"}</td>
+                      <td>{slice.open_balance ? formatUsd(slice.open_balance) : "—"}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

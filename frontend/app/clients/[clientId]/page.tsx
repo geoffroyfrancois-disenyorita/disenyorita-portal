@@ -35,6 +35,44 @@ function formatCurrency(amount: number, currency = "USD"): string {
   }).format(amount);
 }
 
+const revenueLabels: Record<string, string> = {
+  monthly_subscription: "Monthly subscription",
+  annual_subscription: "Annual subscription",
+  one_time: "One-time engagement",
+  multi_payment: "Installment plan"
+};
+
+function formatRevenueAmount(amount: number, classification: string, currency: string): string {
+  const formatted = formatCurrency(amount, currency);
+  if (classification === "monthly_subscription") {
+    return `${formatted} / mo`;
+  }
+  if (classification === "annual_subscription") {
+    return `${formatted} / yr`;
+  }
+  return formatted;
+}
+
+function formatRevenueDetails(profile: ClientDashboard["client"]["revenue_profile"]): string {
+  const parts: string[] = [];
+  if (profile.autopay) {
+    parts.push("Autopay enabled");
+  }
+  if (profile.payment_count) {
+    parts.push(`${profile.payment_count} payments`);
+  }
+  if (profile.remaining_balance) {
+    parts.push(`${formatCurrency(profile.remaining_balance, profile.currency)} outstanding`);
+  }
+  if (profile.next_payment_due) {
+    parts.push(`Next payment ${formatDate(profile.next_payment_due)}`);
+  }
+  if (profile.last_payment_at) {
+    parts.push(`Last paid ${formatDate(profile.last_payment_at)}`);
+  }
+  return parts.join(" • ") || "Billing details up to date";
+}
+
 export default async function ClientDetailPage({ params }: ClientPageProps): Promise<JSX.Element> {
   const dashboard = await getClientDashboard(params.clientId);
 
@@ -97,6 +135,27 @@ export default async function ClientDetailPage({ params }: ClientPageProps): Pro
               </ul>
             </div>
           )}
+        </div>
+
+        <div className="card">
+          <h3>Revenue program</h3>
+          <div className="metric">
+            <span>Billing model</span>
+            <strong>{revenueLabels[client.revenue_profile.classification] ?? "Custom"}</strong>
+          </div>
+          <div className="metric">
+            <span>Contract value</span>
+            <strong>
+              {formatRevenueAmount(
+                client.revenue_profile.amount,
+                client.revenue_profile.classification,
+                client.revenue_profile.currency
+              )}
+            </strong>
+          </div>
+          <p className="text-muted" style={{ marginTop: "0.75rem" }}>
+            {formatRevenueDetails(client.revenue_profile)}
+          </p>
         </div>
 
         <div className="card">
