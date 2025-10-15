@@ -2,20 +2,20 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 
-import { api, AutomationDigest, Campaign } from "../../lib/api";
+import { api, AutomationTaskList, Campaign } from "../../lib/api";
 
 async function getCampaigns(): Promise<Campaign[]> {
   return api.campaigns();
 }
 
-async function getAutomationDigest(): Promise<AutomationDigest> {
-  return api.automationDigest();
+async function getAutomationTasks(): Promise<AutomationTaskList> {
+  return api.automationTasks({ category: "marketing", limit: 5 });
 }
 
 export default async function MarketingPage(): Promise<JSX.Element> {
-  const [campaigns, digest] = await Promise.all([getCampaigns(), getAutomationDigest()]);
+  const [campaigns, automation] = await Promise.all([getCampaigns(), getAutomationTasks()]);
 
-  const marketingTasks = digest.tasks.filter((task) => task.category === "marketing").slice(0, 5);
+  const marketingTasks = automation.tasks;
 
   return (
     <div>

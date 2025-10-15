@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, Optional
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from .common import IdentifiedModel
 
@@ -49,4 +49,27 @@ class AutomationDigest(IdentifiedModel):
 
     generated_at: datetime
     tasks: list[AutomationTask] = Field(default_factory=list)
+
+
+class AutomationTaskSummary(BaseModel):
+    """Public representation of an automation task for UI consumption."""
+
+    id: str
+    category: AutomationCategory
+    summary: str
+    priority: AutomationPriority = AutomationPriority.MEDIUM
+    due_at: Optional[datetime] = None
+    suggested_assignee: Optional[str] = None
+    details: Optional[str] = None
+    related_ids: Dict[str, str] = Field(default_factory=dict)
+    action_label: Optional[str] = None
+    action_url: Optional[str] = None
+
+
+class AutomationTaskList(BaseModel):
+    """Filtered slice of automation tasks scoped to a category."""
+
+    generated_at: datetime
+    category: Optional[AutomationCategory] = None
+    tasks: list[AutomationTaskSummary] = Field(default_factory=list)
 

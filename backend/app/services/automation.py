@@ -12,6 +12,7 @@ from ..schemas.automation import (
     AutomationDigest,
     AutomationPriority,
     AutomationTask,
+    AutomationTaskSummary,
 )
 from ..schemas.clients import Client, ClientEngagement
 from ..schemas.financials import Invoice, InvoiceStatus
@@ -479,4 +480,41 @@ class AutomationEngine:
         total_paid = sum(payments)
         total_invoiced = sum(item.total for item in invoice.items) if invoice.items else 0.0
         return max(total_invoiced - total_paid, 0.0)
+
+
+def summarize_tasks_for_category(
+    digest: AutomationDigest,
+    *,
+    category: AutomationCategory | None = None,
+    limit: int | None = None,
+) -> list[AutomationTaskSummary]:
+    """Produce UI-friendly automation tasks filtered by category."""
+
+    if category is None:
+        filtered_tasks = list(digest.tasks)
+    else:
+        filtered_tasks = [task for task in digest.tasks if task.category == category]
+
+    if limit is not None:
+        if limit < 0:
+            raise ValueError("limit must be non-negative")
+        filtered_tasks = filtered_tasks[:limit]
+
+    summaries: list[AutomationTaskSummary] = []
+    for task in filtered_tasks:
+        summaries.append(
+            AutomationTaskSummary(
+                id=task.id,
+                category=task.category,
+                summary=task.summary,
+                priority=task.priority,
+                due_at=task.due_at,
+                suggested_assignee=task.suggested_assignee,
+                details=task.details,
+                related_ids=dict(task.related_ids),
+                action_label=task.action_label,
+                action_url=task.action_url,
+            )
+        )
+    return summaries
 

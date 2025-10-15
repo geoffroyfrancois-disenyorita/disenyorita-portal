@@ -2,14 +2,14 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 
-import { api, AutomationDigest, Ticket } from "../../lib/api";
+import { api, AutomationTaskList, Ticket } from "../../lib/api";
 
 async function getTickets(): Promise<Ticket[]> {
   return api.supportTickets();
 }
 
-async function getAutomationDigest(): Promise<AutomationDigest> {
-  return api.automationDigest();
+async function getAutomationTasks(): Promise<AutomationTaskList> {
+  return api.automationTasks({ category: "support" });
 }
 
 function priorityTone(priority: string): string {
@@ -24,10 +24,10 @@ function priorityTone(priority: string): string {
 }
 
 export default async function SupportPage(): Promise<JSX.Element> {
-  const [tickets, digest] = await Promise.all([getTickets(), getAutomationDigest()]);
+  const [tickets, automation] = await Promise.all([getTickets(), getAutomationTasks()]);
 
   const ticketActions = new Map<string, { label: string; url: string }>();
-  digest.tasks.forEach((task) => {
+  automation.tasks.forEach((task) => {
     const ticketId = task.related_ids?.ticket_id;
     if (!ticketId) {
       return;
