@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 
-import { api, AutomationDigest, Employee, TimeOffRequest } from "../../lib/api";
+import { api, AutomationTaskList, Employee, TimeOffRequest } from "../../lib/api";
 
 async function getEmployees(): Promise<Employee[]> {
   return api.employees();
@@ -12,19 +12,19 @@ async function getTimeOffRequests(): Promise<TimeOffRequest[]> {
   return api.hrTimeOff();
 }
 
-async function getAutomationDigest(): Promise<AutomationDigest> {
-  return api.automationDigest();
+async function getAutomationTasks(): Promise<AutomationTaskList> {
+  return api.automationTasks({ category: "hr" });
 }
 
 export default async function PeoplePage(): Promise<JSX.Element> {
-  const [employees, timeOff, digest] = await Promise.all([
+  const [employees, timeOff, automation] = await Promise.all([
     getEmployees(),
     getTimeOffRequests(),
-    getAutomationDigest()
+    getAutomationTasks()
   ]);
 
   const timeOffActions = new Map<string, { label: string; url: string }>();
-  digest.tasks.forEach((task) => {
+  automation.tasks.forEach((task) => {
     const requestId = task.related_ids?.time_off_request_id;
     if (!requestId) {
       return;
@@ -99,15 +99,15 @@ export default async function PeoplePage(): Promise<JSX.Element> {
                   <td style={{ textTransform: "capitalize" }}>{request.status}</td>
                   <td>
                     {timeOffActions.has(request.id) ? (
-                    <Link
-                      href={timeOffActions.get(request.id)!.url}
-                      style={{ color: "#8b3921", textDecoration: "none", fontWeight: 600 }}
-                    >
-                      {timeOffActions.get(request.id)!.label}
-                    </Link>
-                  ) : (
-                    <span style={{ color: "#8c6f63" }}>—</span>
-                  )}
+                      <Link
+                        href={timeOffActions.get(request.id)!.url}
+                        style={{ color: "#8b3921", textDecoration: "none", fontWeight: 600 }}
+                      >
+                        {timeOffActions.get(request.id)!.label}
+                      </Link>
+                    ) : (
+                      <span style={{ color: "#8c6f63" }}>—</span>
+                    )}
                   </td>
                 </tr>
               ))

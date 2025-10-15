@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { api, AutomationDigest, AutomationTask } from "../../lib/api";
+import { api, AutomationTask, AutomationTaskList } from "../../lib/api";
 
 function priorityTone(priority: AutomationTask["priority"]): string {
   switch (priority) {
@@ -55,13 +55,13 @@ function deriveFallbackAction(task: AutomationTask): string {
   }
 }
 
-async function getAutomationDigest(): Promise<AutomationDigest> {
-  return api.automationDigest();
+async function getAutomationTasks(): Promise<AutomationTaskList> {
+  return api.automationTasks({ limit: 6 });
 }
 
 export async function AutomationPanel(): Promise<JSX.Element> {
-  const digest = await getAutomationDigest();
-  const tasks = digest.tasks.slice(0, 6);
+  const digest = await getAutomationTasks();
+  const tasks = digest.tasks;
 
   return (
     <section className="card" style={{ marginTop: "3rem", display: "flex", flexDirection: "column", gap: "1rem" }}>

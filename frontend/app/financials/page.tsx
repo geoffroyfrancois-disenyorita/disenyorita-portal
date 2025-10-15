@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 
 import { MetricCard } from "../components/MetricCard";
-import { api, AutomationDigest, Invoice, MacroFinancials, PricingSuggestion, ProjectFinancials } from "../../lib/api";
+import { api, AutomationTaskList, Invoice, MacroFinancials, PricingSuggestion, ProjectFinancials } from "../../lib/api";
 
 async function getInvoices(): Promise<Invoice[]> {
   return api.invoices();
@@ -21,8 +21,8 @@ async function getPricingSuggestions(): Promise<PricingSuggestion[]> {
   return api.pricingSuggestions();
 }
 
-async function getAutomationDigest(): Promise<AutomationDigest> {
-  return api.automationDigest();
+async function getAutomationTasks(): Promise<AutomationTaskList> {
+  return api.automationTasks({ category: "finance" });
 }
 
 function statusTone(status: string): "default" | "success" | "warning" | "danger" {
@@ -48,16 +48,16 @@ function formatCurrency(value: number, currency = "USD"): string {
 }
 
 export default async function FinancialsPage(): Promise<JSX.Element> {
-  const [invoices, projectFinancials, overview, pricingSuggestions, digest] = await Promise.all([
+  const [invoices, projectFinancials, overview, pricingSuggestions, automation] = await Promise.all([
     getInvoices(),
     getProjectFinancials(),
     getFinancialOverview(),
     getPricingSuggestions(),
-    getAutomationDigest()
+    getAutomationTasks()
   ]);
 
   const reminderTasks = new Map<string, { label: string; url: string }>();
-  digest.tasks.forEach((task) => {
+  automation.tasks.forEach((task) => {
     const invoiceId = task.related_ids?.invoice_id;
     if (!invoiceId) {
       return;

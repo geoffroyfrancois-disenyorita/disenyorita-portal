@@ -25,6 +25,17 @@ export const api = {
   operations: () => request<OperationsSnapshot>("/dashboard/operations"),
   automationDigest: () => request<AutomationDigest>("/automation/digest"),
   automationHistory: () => request<AutomationDigest[]>("/automation/digest/history"),
+  automationTasks: ({ category, limit }: AutomationTasksParams = {}) => {
+    const params = new URLSearchParams();
+    if (category) {
+      params.append("category", category);
+    }
+    if (typeof limit === "number") {
+      params.append("limit", limit.toString());
+    }
+    const query = params.toString();
+    return request<AutomationTaskList>(`/automation/tasks${query ? `?${query}` : ""}`);
+  },
   projects: () => request<Project[]>("/projects"),
   project: (projectId: string) => request<Project>(`/projects/${projectId}`),
   updateProject: (projectId: string, payload: ProjectUpdatePayload) =>
@@ -195,6 +206,17 @@ export interface AutomationDigest {
   id: string;
   generated_at: string;
   tasks: AutomationTask[];
+}
+
+export interface AutomationTaskList {
+  generated_at: string;
+  category?: AutomationCategory | null;
+  tasks: AutomationTask[];
+}
+
+export interface AutomationTasksParams {
+  category?: AutomationCategory;
+  limit?: number;
 }
 
 export interface Project {
