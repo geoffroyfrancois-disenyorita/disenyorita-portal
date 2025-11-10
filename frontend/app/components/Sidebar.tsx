@@ -11,6 +11,7 @@ const navItems = [
   { href: "/clients", label: "Clients" },
   { href: "/financials", label: "Financials" },
   { href: "/financials/tax-calculator", label: "Tax tools" },
+  { href: "/financials/tax-compliance", label: "Tax Compliance" },
   { href: "/support", label: "Support" },
   { href: "/hr", label: "People" },
   { href: "/marketing", label: "Marketing" },
