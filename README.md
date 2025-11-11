@@ -235,9 +235,9 @@ For convenience the repository provides wrapper scripts that set up dependencies
 ./launch.sh down        # stop background services
 
 # Windows (PowerShell)
-pwsh -File launch.ps1 up
-pwsh -File launch.ps1 logs
-pwsh -File launch.ps1 down
+pwsh -File launcher.ps1 up
+pwsh -File launcher.ps1 logs
+pwsh -File launcher.ps1 down
 ```
 
 Both scripts automatically create the backend virtual environment, install/update dependencies, and load environment variables from any available `.env` files. By default they keep the FastAPI and Next.js development servers running in the background so you can continue working (and commit code) from the same terminal. Pass `foreground` instead of `up` if you prefer the original blocking behaviour.
