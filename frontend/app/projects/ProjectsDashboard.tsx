@@ -12,6 +12,7 @@ import {
   TaskPriority,
   TaskStatus,
   TaskType,
+  TaskUpdatePayload,
   api
 } from "../../lib/api";
 
@@ -235,8 +236,6 @@ interface TemplateAssignment {
   startDate: string;
   price: string;
 }
-
-type TaskUpdateInput = ProjectUpdatePayload["tasks"] extends (infer R)[] ? R : never;
 
 function normalizeTaskStatus(value: string): TaskStatus {
   return taskStatusOptions.includes(value as TaskStatus) ? (value as TaskStatus) : "todo";
@@ -911,7 +910,7 @@ export default function ProjectsDashboard({ initialProjects }: ProjectsDashboard
             dueDateValue = null;
           }
 
-          const update: TaskUpdateInput = {
+          const update: TaskUpdatePayload = {
             id: task.id,
             status: task.status,
             type: task.type,
