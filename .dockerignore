@@ -1,0 +1,37 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+TAX_PAGE_REVIEW.md
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Scripts (not needed in containers)
+launch.sh
+launcher.ps1
+docker-launch.ps1
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Misc
+*.log

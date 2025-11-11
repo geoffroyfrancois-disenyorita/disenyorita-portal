@@ -242,5 +242,73 @@ pwsh -File launcher.ps1 down
 
 Both scripts automatically create the backend virtual environment, install/update dependencies, and load environment variables from any available `.env` files. By default they keep the FastAPI and Next.js development servers running in the background so you can continue working (and commit code) from the same terminal. Pass `foreground` instead of `up` if you prefer the original blocking behaviour.
 
+### Docker Desktop (Windows/macOS/Linux)
+
+For a containerized deployment using Docker Desktop, the repository provides Docker configuration and a PowerShell launcher:
+
+**Prerequisites:**
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) installed and running
+
+**Quick Start:**
+
+1. **Configure environment** (optional):
+   ```bash
+   # Copy the Docker environment template
+   cp .env.docker.example .env
+
+   # Edit .env and update SECRET_KEY and other values as needed
+   ```
+
+2. **Launch with Docker Desktop:**
+   ```powershell
+   # Windows (PowerShell)
+   .\docker-launch.ps1 up
+
+   # View logs
+   .\docker-launch.ps1 logs
+
+   # Stop containers
+   .\docker-launch.ps1 down
+
+   # Check status
+   .\docker-launch.ps1 status
+
+   # Rebuild from scratch
+   .\docker-launch.ps1 rebuild
+
+   # Clean up all resources
+   .\docker-launch.ps1 clean
+   ```
+
+   Or use docker-compose directly on any platform:
+   ```bash
+   # Start services
+   docker compose up -d
+
+   # View logs
+   docker compose logs -f
+
+   # Stop services
+   docker compose down
+   ```
+
+3. **Access the application:**
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:8000
+   - API Documentation: http://localhost:8000/docs
+
+**Docker Architecture:**
+- Multi-stage builds for optimized image sizes
+- Health checks for both frontend and backend services
+- Hot-reload support for development (via volume mounts)
+- Production-ready configuration with standalone Next.js output
+- Network isolation with dedicated Docker bridge network
+
+**Troubleshooting:**
+- If containers fail to start, check Docker Desktop is running
+- View detailed logs with `.\docker-launch.ps1 logs` or `docker compose logs`
+- Rebuild containers after dependency changes with `.\docker-launch.ps1 rebuild`
+- Ensure ports 3000 and 8000 are not already in use
+
 ## Testing
 ⚠️ Tests not run (planning document only).
