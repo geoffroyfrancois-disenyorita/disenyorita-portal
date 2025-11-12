@@ -306,27 +306,31 @@ For a containerized deployment using Docker Desktop, the repository provides Doc
 
 **Custom Port Configuration:**
 
-If you need to use different ports (e.g., because you're running multiple servers), you can configure custom ports using environment variables:
+If you need to use different ports (e.g., because you're running multiple servers or letting Docker Desktop manage ports), you can configure custom HOST ports using environment variables. Note that the containers always use fixed internal ports (frontend: 3000, backend: 8000), but you can map these to different HOST ports:
 
 1. **Create a .env file** from the template:
    ```bash
    cp .env.docker.example .env
    ```
 
-2. **Set your desired ports** in `.env`:
+2. **Set your desired HOST ports** in `.env`:
    ```bash
    # Port Configuration
-   FRONTEND_PORT=4000    # Change from default 3000
-   BACKEND_PORT=9000     # Change from default 8000
+   # These control which HOST ports Docker maps to (containers use fixed internal ports)
+   FRONTEND_PORT=4000    # Map frontend container port 3000 to host port 4000
+   BACKEND_PORT=9000     # Map backend container port 8000 to host port 9000
 
    # Backend Configuration
    SECRET_KEY=your-secret-key
-   CORS_ORIGINS=http://localhost:4000
+   CORS_ORIGINS=http://localhost:4000,http://frontend:3000
 
    # Frontend Configuration
    NEXT_PUBLIC_API_BASE=http://localhost:9000/api/v1
-   API_BASE_INTERNAL=http://backend:9000/api/v1
+   # API_BASE_INTERNAL uses fixed container port 8000 (not the host port)
+   API_BASE_INTERNAL=http://backend:8000/api/v1
    ```
+
+   **Important:** The `API_BASE_INTERNAL` variable should always use port `8000` (the backend's internal container port), not the host port, because this URL is used for server-side requests within the Docker network.
 
 3. **Launch with custom ports**:
    ```bash
@@ -341,6 +345,14 @@ If you need to use different ports (e.g., because you're running multiple server
    - Frontend: `http://localhost:4000` (or your FRONTEND_PORT)
    - Backend API: `http://localhost:9000` (or your BACKEND_PORT)
    - API Documentation: `http://localhost:9000/docs`
+
+**Docker Desktop Port Management:**
+
+Docker Desktop can automatically assign available ports if you don't specify them. When using this feature:
+- The containers will still use their fixed internal ports (frontend: 3000, backend: 8000)
+- Docker Desktop will map these to available host ports
+- The internal Docker network communication (frontend → backend) always uses `http://backend:8000/api/v1`
+- You only need to worry about host ports for accessing the application from your browser
 
 **For local development** (without Docker), you can also set ports:
 
@@ -369,8 +381,12 @@ PORT=4000 npm run dev
 - View detailed logs with `.\docker-launch.ps1 logs` or `docker compose logs`
 - Rebuild containers after dependency changes with `.\docker-launch.ps1 rebuild`
 - Ensure your chosen ports are not already in use
-- When changing ports, update both `FRONTEND_PORT`/`BACKEND_PORT` and the corresponding API URLs
-- Make sure CORS_ORIGINS includes your frontend port
+- **ECONNREFUSED errors**: If the frontend shows connection refused errors, ensure:
+  - You have a `.env` file (create from `.env.docker.example` if missing)
+  - `API_BASE_INTERNAL` is set to `http://backend:8000/api/v1` (always port 8000, the internal container port)
+  - Rebuild the frontend container after changing environment variables: `docker compose up -d --build frontend`
+- When changing HOST ports, update `FRONTEND_PORT`/`BACKEND_PORT` and `NEXT_PUBLIC_API_BASE` accordingly
+- Make sure `CORS_ORIGINS` includes both `http://localhost:3000` and `http://frontend:3000`
 
 ## Testing
 ⚠️ Tests not run (planning document only).
