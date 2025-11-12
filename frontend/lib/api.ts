@@ -1,10 +1,19 @@
 export type ApiOptions = RequestInit & { revalidate?: number };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api/v1";
+// Use internal Docker network URL for server-side requests, public URL for client-side
+const getApiBase = (): string => {
+  // Server-side: use internal Docker service name if available
+  if (typeof window === "undefined") {
+    return process.env.API_BASE_INTERNAL ?? process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api/v1";
+  }
+  // Client-side: use public URL
+  return process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api/v1";
+};
 
 async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const { revalidate, ...fetchOptions } = options;
-  const response = await fetch(`${API_BASE}${path}`, {
+  const apiBase = getApiBase();
+  const response = await fetch(`${apiBase}${path}`, {
     ...fetchOptions,
     headers: {
       "Content-Type": "application/json",
