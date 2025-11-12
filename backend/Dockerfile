@@ -1,5 +1,5 @@
 # Multi-stage build for Python FastAPI backend
-FROM python:3.11-slim as base
+FROM python:3.11-slim AS base
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -33,7 +33,7 @@ EXPOSE ${BACKEND_PORT}
 
 # Health check (uses environment variable for port)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD python -c "import os, requests; port = os.getenv('BACKEND_PORT', '8000'); requests.get(f'http://localhost:{port}/api/v1/health', timeout=2)" || exit 1
+    CMD python -c "import os, requests; port = os.getenv('BACKEND_PORT', '8000'); requests.get(f'http://localhost:{port}/health', timeout=2)" || exit 1
 
 # Run the application with configurable port
 CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT}"
