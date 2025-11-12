@@ -25,12 +25,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Expose port
-EXPOSE 8000
+# Set default port
+ENV BACKEND_PORT=8000
 
-# Health check
+# Expose port (will be overridden by environment variable)
+EXPOSE ${BACKEND_PORT}
+
+# Health check (uses environment variable for port)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/api/v1/health', timeout=2)" || exit 1
+    CMD python -c "import os, requests; port = os.getenv('BACKEND_PORT', '8000'); requests.get(f'http://localhost:{port}/api/v1/health', timeout=2)" || exit 1
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application with configurable port
+CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT}"

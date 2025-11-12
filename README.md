@@ -304,11 +304,73 @@ For a containerized deployment using Docker Desktop, the repository provides Doc
 - Production-ready configuration with standalone Next.js output
 - Network isolation with dedicated Docker bridge network
 
+**Custom Port Configuration:**
+
+If you need to use different ports (e.g., because you're running multiple servers), you can configure custom ports using environment variables:
+
+1. **Create a .env file** from the template:
+   ```bash
+   cp .env.docker.example .env
+   ```
+
+2. **Set your desired ports** in `.env`:
+   ```bash
+   # Port Configuration
+   FRONTEND_PORT=4000    # Change from default 3000
+   BACKEND_PORT=9000     # Change from default 8000
+
+   # Backend Configuration
+   SECRET_KEY=your-secret-key
+   CORS_ORIGINS=http://localhost:4000
+
+   # Frontend Configuration
+   NEXT_PUBLIC_API_BASE=http://localhost:9000/api/v1
+   API_BASE_INTERNAL=http://backend:9000/api/v1
+   ```
+
+3. **Launch with custom ports**:
+   ```bash
+   # Using docker compose
+   docker compose up -d
+
+   # Or using the PowerShell script
+   .\docker-launch.ps1 up
+   ```
+
+4. **Access your application**:
+   - Frontend: `http://localhost:4000` (or your FRONTEND_PORT)
+   - Backend API: `http://localhost:9000` (or your BACKEND_PORT)
+   - API Documentation: `http://localhost:9000/docs`
+
+**For local development** (without Docker), you can also set ports:
+
+Backend:
+```bash
+cd backend
+export BACKEND_PORT=9000  # Linux/macOS
+# or
+set BACKEND_PORT=9000     # Windows CMD
+uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT
+```
+
+Frontend:
+```bash
+cd frontend
+# Add to .env.local
+FRONTEND_PORT=4000
+NEXT_PUBLIC_API_BASE=http://localhost:9000/api/v1
+
+# Run with custom port
+PORT=4000 npm run dev
+```
+
 **Troubleshooting:**
 - If containers fail to start, check Docker Desktop is running
 - View detailed logs with `.\docker-launch.ps1 logs` or `docker compose logs`
 - Rebuild containers after dependency changes with `.\docker-launch.ps1 rebuild`
-- Ensure ports 3000 and 8000 are not already in use
+- Ensure your chosen ports are not already in use
+- When changing ports, update both `FRONTEND_PORT`/`BACKEND_PORT` and the corresponding API URLs
+- Make sure CORS_ORIGINS includes your frontend port
 
 ## Testing
 ⚠️ Tests not run (planning document only).

@@ -7,10 +7,11 @@ services:
       dockerfile: Dockerfile
     container_name: disenyorita-backend
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"
     environment:
+      - BACKEND_PORT=${BACKEND_PORT:-8000}
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:${FRONTEND_PORT:-3000},http://frontend:${FRONTEND_PORT:-3000}}
     volumes:
       # Mount for development - comment out for production
       - ./backend:/app
@@ -19,7 +20,7 @@ services:
       - disenyorita-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/api/v1/health', timeout=2)"]
+      test: ["CMD", "sh", "-c", "python -c \"import os, requests; port = os.getenv('BACKEND_PORT', '8000'); requests.get(f'http://localhost:{port}/api/v1/health', timeout=2)\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -30,13 +31,14 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_BASE=http://localhost:8000/api/v1
+        - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-http://localhost:${BACKEND_PORT:-8000}/api/v1}
     container_name: disenyorita-frontend
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:${FRONTEND_PORT:-3000}"
     environment:
-      - NEXT_PUBLIC_API_BASE=http://localhost:8000/api/v1
-      - API_BASE_INTERNAL=http://backend:8000/api/v1
+      - FRONTEND_PORT=${FRONTEND_PORT:-3000}
+      - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-http://localhost:${BACKEND_PORT:-8000}/api/v1}
+      - API_BASE_INTERNAL=${API_BASE_INTERNAL:-http://backend:${BACKEND_PORT:-8000}/api/v1}
     depends_on:
       backend:
         condition: service_healthy
@@ -44,7 +46,7 @@ services:
       - disenyorita-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      test: ["CMD", "sh", "-c", "node -e \"require('http').get('http://localhost:${FRONTEND_PORT}/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})\""]
       interval: 30s
       timeout: 10s
       retries: 3
