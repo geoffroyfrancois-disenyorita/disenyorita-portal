@@ -43,13 +43,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
 
-EXPOSE 3000
-
-ENV PORT=3000
+# Set default frontend port
+ENV FRONTEND_PORT=3000
+ENV PORT=${FRONTEND_PORT}
 ENV HOSTNAME="0.0.0.0"
 
-# Health check
+EXPOSE ${FRONTEND_PORT}
+
+# Health check (uses environment variable for port)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
+    CMD sh -c "node -e \"require('http').get('http://localhost:${FRONTEND_PORT}/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})\"" || exit 1
 
 CMD ["node", "server.js"]
